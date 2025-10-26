@@ -1,7 +1,5 @@
 [project]
-dependencies    = [
-    "jmespath>=1.0.1",
-]
+dependencies    = ["jmespath>=1.0.1"]
 description     = "JMESPath in method chaining style"
 name            = "querydict"
 readme          = "README.md"
@@ -12,6 +10,4 @@ build-backend = "uv_build"
 requires      = ["uv_build>=0.8.15,<0.9.0"]
 
 [dependency-groups]
-dev = [
-    "pytest>=8.4.2",
-]
+dev = []
