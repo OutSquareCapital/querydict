@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sized
 from dataclasses import dataclass
 from typing import Any, Literal, TypeIs
 
-# ------------------------------ Helpers -------------------------------------
+Comparator = Literal["eq", "ne", "lt", "lte", "gt", "gte"]
+
+
+def _is_sized(x: Any) -> TypeIs[Sized]:
+    return isinstance(x, Sized)
 
 
 def _is_number(x: Any) -> bool:
@@ -24,7 +28,6 @@ def _comparable(x: Any) -> bool:
 
 
 def _equals(x: Any, y: Any) -> bool:
-    # Special-case 0/1 vs bool like original jmespath semantics
     if _is_number(x) and x in (0, 1):
         return not isinstance(y, bool)
     if _is_number(y) and y in (0, 1):
@@ -40,15 +43,9 @@ def _truthy(v: Any) -> bool:
     return not _falsy(v)
 
 
-# ------------------------------- Nodes --------------------------------------
-
-
 class Node:
-    def eval(self, value: Any) -> Any:  # abstract
+    def eval(self, value: Any) -> Any:
         raise NotImplementedError
-
-
-# ---- leaves ----
 
 
 @dataclass(slots=True)
@@ -100,9 +97,6 @@ class Slice(Node):
         return value[slice(self.start, self.end, self.step)]
 
 
-# ---- structural ----
-
-
 @dataclass(slots=True)
 class SubExpr(Node):
     parts: tuple[Node, ...]
@@ -121,9 +115,6 @@ class Pipe(Node):
 
     def eval(self, value: Any) -> Any:
         return self.right.eval(self.left.eval(value))
-
-
-# ---- projections ----
 
 
 @dataclass(slots=True)
@@ -197,11 +188,6 @@ class FilterProjection(Node):
         return out
 
 
-# ---- logic / compare ----
-
-Comparator = Literal["eq", "ne", "lt", "lte", "gt", "gte"]
-
-
 @dataclass(slots=True)
 class Compare(Node):
     op: Comparator
@@ -209,22 +195,22 @@ class Compare(Node):
     right: Node
 
     def eval(self, value: Any) -> Any:
-        l = self.left.eval(value)
-        r = self.right.eval(value)
-        if self.op in ("eq", "ne"):
-            eq = _equals(l, r)
-            return eq if self.op == "eq" else (not eq)
-        if not (_comparable(l) and _comparable(r)):
-            return None
-        if self.op == "lt":
-            return l < r
-        if self.op == "lte":
-            return l <= r
-        if self.op == "gt":
-            return l > r
-        if self.op == "gte":
-            return l >= r
-        raise ValueError(self.op)
+        left = self.left.eval(value)
+        right = self.right.eval(value)
+        match self.op:
+            case "eq" | "ne":
+                eq = _equals(left, right)
+                return eq if self.op == "eq" else (not eq)
+            case "lt":
+                return left < right
+            case "lte":
+                return left <= right
+            case "gt":
+                return left > right
+            case "gte":
+                return left >= right
+            case _ if not (_comparable(left) and _comparable(right)):
+                return None
 
 
 @dataclass(slots=True)
@@ -233,8 +219,8 @@ class And(Node):
     right: Node
 
     def eval(self, value: Any) -> Any:
-        l = self.left.eval(value)
-        return l if _falsy(l) else self.right.eval(value)
+        left = self.left.eval(value)
+        return left if _falsy(left) else self.right.eval(value)
 
 
 @dataclass(slots=True)
@@ -243,8 +229,8 @@ class Or(Node):
     right: Node
 
     def eval(self, value: Any) -> Any:
-        l = self.left.eval(value)
-        return self.right.eval(value) if _falsy(l) else l
+        left = self.left.eval(value)
+        return self.right.eval(value) if _falsy(left) else left
 
 
 @dataclass(slots=True)
@@ -258,16 +244,13 @@ class Not(Node):
         return not v
 
 
-# ---- built-in ops as nodes (no registry) ----
-
-
 @dataclass(slots=True)
 class Length(Node):
     inner: Node
 
     def eval(self, value: Any) -> Any:
         x = self.inner.eval(value)
-        if isinstance(x, (str, list, dict)):
+        if _is_sized(x):
             return len(x)
         return None
 
@@ -278,7 +261,7 @@ class Sort(Node):
 
     def eval(self, value: Any) -> Any:
         xs = self.inner.eval(value)
-        if isinstance(xs, list):
+        if _is_list(xs):
             try:
                 return sorted(xs)
             except Exception:
@@ -350,7 +333,7 @@ class ToNumber(Node):
 @dataclass(slots=True)
 class MapApply(Node):
     base: Node
-    build: Callable[[Identity], Node]  # builder from element-root
+    build: Callable[[Identity], Node]
 
     def eval(self, value: Any) -> Any:
         arr = self.base.eval(value)
@@ -390,7 +373,7 @@ class MinBy(Node):
 
     def eval(self, value: Any) -> Any:
         arr = self.base.eval(value)
-        if not isinstance(arr, list) or not arr:
+        if not _is_list(arr) or not arr:
             return None
 
         def key(el: Any) -> Any:
@@ -410,7 +393,7 @@ class MaxBy(Node):
 
     def eval(self, value: Any) -> Any:
         arr = self.base.eval(value)
-        if not isinstance(arr, list) or not arr:
+        if not _is_list(arr) or not arr:
             return None
 
         def key(el: Any) -> Any:
@@ -421,9 +404,6 @@ class MaxBy(Node):
             return max(arr, key=key)
         except Exception:
             return None
-
-
-# ---- multi-selects ----
 
 
 @dataclass(slots=True)

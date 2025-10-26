@@ -14,7 +14,6 @@ class Query:
     def _new(self, node: nd.Node) -> Self:
         return self.__class__(node)
 
-    # ---- chain ---------------------------------------------------------------
     def field(self, name: str) -> Self:
         if isinstance(self.node, nd.SubExpr):
             return self._new(nd.SubExpr(self.node.parts + (nd.Field(name),)))
@@ -33,7 +32,6 @@ class Query:
     ) -> Self:
         return self._new(nd.SubExpr((self.node, nd.Slice(start, end, step))))
 
-    # ---- projections ---------------------------------------------------------
     def project(self, rhs: Self) -> Self:
         return self._new(nd.Projection(self.node, rhs.node))
 
@@ -48,7 +46,6 @@ class Query:
             nd.FilterProjection(self.node, (then or identity()).node, cond.node)
         )
 
-    # ---- logic / compare -----------------------------------------------------
     def eq(self, other: Self) -> Self:
         return self._new(nd.Compare("eq", self.node, other.node))
 
@@ -76,7 +73,6 @@ class Query:
     def not_(self) -> Self:
         return self._new(nd.Not(self.node))
 
-    # ---- built-in ops as methods (no registry) ------------------------------
     def length(self) -> Self:
         return self._new(nd.Length(self.node))
 
@@ -98,7 +94,6 @@ class Query:
     def to_number(self) -> Self:
         return self._new(nd.ToNumber(self.node))
 
-    # ---- higher-order builders (expref-like via lambdas) --------------------
     def map_with(self, build: Callable[[Query], Query]) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
             return build(identity()).node
@@ -123,15 +118,11 @@ class Query:
 
         return self._new(nd.MaxBy(self.node, _b))
 
-    # ---- piping & exec -------------------------------------------------------
     def pipe(self, rhs: Self) -> Self:
         return self._new(nd.Pipe(self.node, rhs.node))
 
     def search(self, data: Any) -> Any:
         return self.node.eval(data)
-
-
-# ---- top-level helpers ------------------------------------------------------
 
 
 def identity() -> Query:
