@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import operator
+from abc import abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -15,7 +16,7 @@ from ._checks import (
     is_sized,
     truthy,
 )
-from ._core import Node, as_arg, as_callable, as_expref, ensure_leading_dot
+from ._core import Node, as_callable, as_expref, ensure_leading_dot
 
 
 @dataclass(slots=True, repr=False)
@@ -117,47 +118,39 @@ class Pipe(Node):
 
 
 @dataclass(slots=True, repr=False)
-class Projection(Node):
+class _ProjectionBase(Node):
     base: Node
     rhs: Node
+    SEP: str
+
+    @abstractmethod
+    def _iter(self, value: Any) -> list[Any] | None:
+        raise NotImplementedError
 
     def eval(self, value: Any) -> Any:
-        seq = self.base.eval(value)
-        if not is_list(seq):
+        seq = self._iter(self.base.eval(value))
+        if seq is None:
             return None
-        out: list[Any] = []
-        for el in seq:
-            v = self.rhs.eval(el)
-            if v is not None:
-                out.append(v)
-        return out
+        return [self.rhs.eval(el) for el in seq if el is not None]
 
     def as_jmespath(self) -> str:
-        base = self.base.as_jmespath()
-        rhs = ensure_leading_dot(self.rhs.as_jmespath())
-        return f"{base}[*]{rhs}"
+        return f"{self.base.as_jmespath()}{self.SEP}{ensure_leading_dot(self.rhs.as_jmespath())}"
 
 
 @dataclass(slots=True, repr=False)
-class ValueProjection(Node):
-    base: Node
-    rhs: Node
+class Projection(_ProjectionBase):
+    SEP: str = "[*]"
 
-    def eval(self, value: Any) -> Any:
-        obj = self.base.eval(value)
-        if not is_mapping(obj):
-            return None
-        out: list[Any] = []
-        for el in obj.values():
-            v = self.rhs.eval(el)
-            if v is not None:
-                out.append(v)
-        return out
+    def _iter(self, value: Any) -> list[Any] | None:
+        return value if is_list(value) else None
 
-    def as_jmespath(self) -> str:
-        base = self.base.as_jmespath()
-        rhs = ensure_leading_dot(self.rhs.as_jmespath())
-        return f"{base}*{rhs}"
+
+@dataclass(slots=True, repr=False)
+class ValueProjection(_ProjectionBase):
+    SEP: str = "*"
+
+    def _iter(self, value: Any) -> list[Any] | None:
+        return list(value.values()) if is_mapping(value) else None
 
 
 @dataclass(slots=True, repr=False)
@@ -170,14 +163,7 @@ class FilterProjection(Node):
         seq = self.base.eval(value)
         if not is_list(seq):
             return None
-        out: list[Any] = []
-        for el in seq:
-            keep = self.cond.eval(el)
-            if truthy(keep):
-                v = self.then.eval(el)
-                if v is not None:
-                    out.append(v)
-        return out
+        return [self.then.eval(el) for el in seq if truthy(self.cond.eval(el))]
 
     def as_jmespath(self) -> str:
         base = self.base.as_jmespath()
@@ -320,8 +306,12 @@ class Not(Node):
 class CallableNode(Node):
     inner: Node
 
+    @property
+    def func(self) -> str:
+        return self.__class__.__name__.lower()
+
     def as_jmespath(self) -> str:
-        return as_callable(self.__class__.__name__.lower(), self.inner)
+        return as_callable(self.func, self.inner)
 
 
 @dataclass(slots=True, repr=False)
@@ -335,8 +325,6 @@ class Length(CallableNode):
 
 @dataclass(slots=True, repr=False)
 class Sort(CallableNode):
-    inner: Node
-
     def eval(self, value: Any) -> Any:
         xs = self.inner.eval(value)
         if is_list(xs):
@@ -349,8 +337,6 @@ class Sort(CallableNode):
 
 @dataclass(slots=True, repr=False)
 class Keys(CallableNode):
-    inner: Node
-
     def eval(self, value: Mapping[Any, Any] | Any) -> Any:
         x = self.inner.eval(value)
         return list(x.keys()) if is_mapping(x) else None
@@ -364,19 +350,21 @@ class Values(CallableNode):
 
 
 @dataclass(slots=True, repr=False)
-class ToArray(CallableNode):
+class Converter(CallableNode):
+    @property
+    def func(self) -> str:
+        return "to_" + self.__class__.__name__.lower()
+
+
+@dataclass(slots=True, repr=False)
+class Array(Converter):
     def eval(self, value: Any) -> Any:
         x = self.inner.eval(value)
         return x if is_list(x) else [x]
 
-    def as_jmespath(self) -> str:
-        return f"to_array({as_arg(self.inner)})"
-
 
 @dataclass(slots=True, repr=False)
-class ToString(Node):
-    inner: Node
-
+class String(Converter):
     def eval(self, value: Any) -> Any:
         import json as _json
 
@@ -387,14 +375,9 @@ class ToString(Node):
             else _json.dumps(x, separators=(",", ":"), default=str)
         )
 
-    def as_jmespath(self) -> str:
-        return f"to_string({as_arg(self.inner)})"
-
 
 @dataclass(slots=True, repr=False)
-class ToNumber(Node):
-    inner: Node
-
+class Number(Converter):
     def eval(self, value: Any) -> Any:
         x = self.inner.eval(value)
         if isinstance(x, (list, dict, bool)) or x is None:
@@ -409,9 +392,6 @@ class ToNumber(Node):
             except Exception:
                 return None
 
-    def as_jmespath(self) -> str:
-        return f"to_number({as_arg(self.inner)})"
-
 
 @dataclass(slots=True, repr=False)
 class MapApply(Node):
@@ -422,11 +402,7 @@ class MapApply(Node):
         arr = self.base.eval(value)
         if not is_list(arr):
             return None
-        out: list[Any] = []
-        for el in arr:
-            expr = self.build(Identity())
-            out.append(expr.eval(el))
-        return out
+        return [self.build(Identity()).eval(el) for el in arr]
 
     def as_jmespath(self) -> str:
         fn = as_expref(self.build(Identity()))
@@ -444,8 +420,7 @@ class SortBy(Node):
             return arr if is_list(arr) else None
 
         def key(el: Any) -> Any:
-            expr = self.key_of(Identity())
-            return expr.eval(el)
+            return self.key_of(Identity()).eval(el)
 
         try:
             return sorted(arr, key=key)
@@ -468,8 +443,7 @@ class MinBy(Node):
             return None
 
         def key(el: Any) -> Any:
-            expr = self.key_of(Identity())
-            return expr.eval(el)
+            return self.key_of(Identity()).eval(el)
 
         try:
             return min(arr, key=key)

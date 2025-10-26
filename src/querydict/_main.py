@@ -106,13 +106,13 @@ class Query:
         return self._new(nd.Values(self.node))
 
     def to_array(self) -> Self:
-        return self._new(nd.ToArray(self.node))
+        return self._new(nd.Array(self.node))
 
     def to_string(self) -> Self:
-        return self._new(nd.ToString(self.node))
+        return self._new(nd.String(self.node))
 
     def to_number(self) -> Self:
-        return self._new(nd.ToNumber(self.node))
+        return self._new(nd.Number(self.node))
 
     def map_with(self, build: KeyOp) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
