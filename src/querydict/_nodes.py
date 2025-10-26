@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import operator
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -15,30 +15,7 @@ from ._checks import (
     is_sized,
     truthy,
 )
-from ._conversion import (
-    OP_MAP,
-    Comparator,
-    as_arg,
-    as_callable,
-    as_expref,
-    ensure_leading_dot,
-)
-
-
-class Node(ABC):
-    def __repr__(self) -> str:
-        jp = self.as_jmespath() or "@"
-        return f"{self.__class__.__name__}({jp})"
-
-    @abstractmethod
-    def eval(self, value: Any) -> Any:
-        """Evaluate the node against the given value."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def as_jmespath(self) -> str:
-        """Convert the node to its JMESPath string representation."""
-        raise NotImplementedError
+from ._core import Node, as_arg, as_callable, as_expref, ensure_leading_dot
 
 
 @dataclass(slots=True, repr=False)
@@ -232,32 +209,71 @@ class Flatten(Node):
 
 
 @dataclass(slots=True, repr=False)
-class Compare(Node):
-    op: Comparator
+class _BinaryCompare(Node):
     left: Node
     right: Node
+    SYMBOL: str
+
+    def as_jmespath(self) -> str:
+        return f"{self.left.as_jmespath()} {self.SYMBOL} {self.right.as_jmespath()}"
+
+
+@dataclass(slots=True, repr=False)
+class _EqBase(_BinaryCompare):
+    def _equals(self, value: Any) -> bool:
+        return equals(self.left.eval(value), self.right.eval(value))
+
+
+@dataclass(slots=True, repr=False)
+class Eq(_EqBase):
+    SYMBOL: str = "=="
+
+    def eval(self, value: Any) -> Any:
+        return self._equals(value)
+
+
+@dataclass(slots=True, repr=False)
+class Ne(_EqBase):
+    SYMBOL: str = "!="
+
+    def eval(self, value: Any) -> Any:
+        return not self._equals(value)
+
+
+@dataclass(slots=True, repr=False)
+class _OrderBase(_BinaryCompare):
+    OP: Callable[[Any, Any], bool] = operator.lt
 
     def eval(self, value: Any) -> Any:
         left = self.left.eval(value)
         right = self.right.eval(value)
-        match self.op:
-            case "eq" | "ne":
-                eq = equals(left, right)
-                return eq if self.op == "eq" else (not eq)
-            case "lt":
-                return left < right
-            case "lte":
-                return left <= right
-            case "gt":
-                return left > right
-            case "gte":
-                return left >= right
-            case _ if not (is_comparable(left) and is_comparable(right)):
-                return None
+        if not (is_comparable(left) and is_comparable(right)):
+            return None
+        return self.OP(left, right)
 
-    def as_jmespath(self) -> str:
-        op_str = OP_MAP.get(self.op, self.op)
-        return f"{self.left.as_jmespath()} {op_str} {self.right.as_jmespath()}"
+
+@dataclass(slots=True, repr=False)
+class Lt(_OrderBase):
+    SYMBOL: str = "<"
+    OP: Callable[[Any, Any], bool] = operator.lt
+
+
+@dataclass(slots=True, repr=False)
+class Lte(_OrderBase):
+    SYMBOL: str = "<="
+    OP: Callable[[Any, Any], bool] = operator.le
+
+
+@dataclass(slots=True, repr=False)
+class Gt(_OrderBase):
+    SYMBOL: str = ">"
+    OP: Callable[[Any, Any], bool] = operator.gt
+
+
+@dataclass(slots=True, repr=False)
+class Gte(_OrderBase):
+    SYMBOL: str = ">="
+    OP: Callable[[Any, Any], bool] = operator.ge
 
 
 @dataclass(slots=True, repr=False)

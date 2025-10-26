@@ -67,22 +67,22 @@ class Query:
         )
 
     def eq(self, other: Any) -> Self:
-        return self._new(nd.Compare("eq", self.node, into_expr(other)))
+        return self._new(nd.Eq(self.node, into_expr(other)))
 
     def ne(self, other: Any) -> Self:
-        return self._new(nd.Compare("ne", self.node, into_expr(other)))
+        return self._new(nd.Ne(self.node, into_expr(other)))
 
     def lt(self, other: Any) -> Self:
-        return self._new(nd.Compare("lt", self.node, into_expr(other)))
+        return self._new(nd.Lt(self.node, into_expr(other)))
 
     def lte(self, other: Any) -> Self:
-        return self._new(nd.Compare("lte", self.node, into_expr(other)))
+        return self._new(nd.Lte(self.node, into_expr(other)))
 
     def gt(self, other: Any) -> Self:
-        return self._new(nd.Compare("gt", self.node, into_expr(other)))
+        return self._new(nd.Gt(self.node, into_expr(other)))
 
     def gte(self, other: Any) -> Self:
-        return self._new(nd.Compare("gte", self.node, into_expr(other)))
+        return self._new(nd.Gte(self.node, into_expr(other)))
 
     def and_(self, other: Any) -> Self:
         return self._new(nd.And(self.node, into_expr(other)))
