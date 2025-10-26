@@ -16,13 +16,17 @@ class Query:
 
     def field(self, name: str) -> Self:
         if isinstance(self.node, nd.SubExpr):
-            return self._new(nd.SubExpr(self.node.parts + (nd.Field(name),)))
-        return self._new(nd.SubExpr((self.node, nd.Field(name))))
+            node = nd.SubExpr(self.node.parts + (nd.Field(name),))
+        else:
+            node = nd.SubExpr((self.node, nd.Field(name)))
+        return self._new(node)
 
     def dot(self, rhs: Self) -> Self:
         if isinstance(self.node, nd.SubExpr):
-            return self._new(nd.SubExpr(self.node.parts + (rhs.node,)))
-        return self._new(nd.SubExpr((self.node, rhs.node)))
+            node = nd.SubExpr(self.node.parts + (rhs.node,))
+        else:
+            node = nd.SubExpr((self.node, rhs.node))
+        return self._new(node)
 
     def index(self, i: int) -> Self:
         return self._new(nd.SubExpr((self.node, nd.Index(i))))

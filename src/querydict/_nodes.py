@@ -1,46 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sized
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, TypeIs
+from typing import Any, Literal
+
+from ._checks import (
+    equals,
+    falsy,
+    is_comparable,
+    is_list,
+    is_mapping,
+    is_number,
+    is_sized,
+    truthy,
+)
 
 Comparator = Literal["eq", "ne", "lt", "lte", "gt", "gte"]
-
-
-def _is_sized(x: Any) -> TypeIs[Sized]:
-    return isinstance(x, Sized)
-
-
-def _is_number(x: Any) -> bool:
-    return isinstance(x, (int, float)) and not isinstance(x, bool)
-
-
-def _is_mapping(x: Any) -> TypeIs[Mapping[Any, Any]]:
-    return isinstance(x, Mapping)
-
-
-def _is_list(x: Any) -> TypeIs[list[Any]]:
-    return isinstance(x, list)
-
-
-def _comparable(x: Any) -> bool:
-    return _is_number(x) or isinstance(x, str)
-
-
-def _equals(x: Any, y: Any) -> bool:
-    if _is_number(x) and x in (0, 1):
-        return not isinstance(y, bool)
-    if _is_number(y) and y in (0, 1):
-        return not isinstance(x, bool)
-    return x == y
-
-
-def _falsy(v: Any) -> bool:
-    return v in ("", [], {}) or v is None or v is False
-
-
-def _truthy(v: Any) -> bool:
-    return not _falsy(v)
 
 
 class Node:
@@ -67,7 +42,7 @@ class Field(Node):
     name: str
 
     def eval(self, value: Any) -> Any:
-        if _is_mapping(value):
+        if is_mapping(value):
             return value.get(self.name)
         return None
 
@@ -77,7 +52,7 @@ class Index(Node):
     i: int
 
     def eval(self, value: Any) -> Any:
-        if not _is_list(value):
+        if not is_list(value):
             return None
         try:
             return value[self.i]
@@ -92,7 +67,7 @@ class Slice(Node):
     step: int | None
 
     def eval(self, value: Any) -> Any:
-        if not _is_list(value):
+        if not is_list(value):
             return None
         return value[slice(self.start, self.end, self.step)]
 
@@ -124,7 +99,7 @@ class Projection(Node):
 
     def eval(self, value: Any) -> Any:
         seq = self.base.eval(value)
-        if not _is_list(seq):
+        if not is_list(seq):
             return None
         out: list[Any] = []
         for el in seq:
@@ -141,7 +116,7 @@ class ValueProjection(Node):
 
     def eval(self, value: Any) -> Any:
         obj = self.base.eval(value)
-        if not _is_mapping(obj):
+        if not is_mapping(obj):
             return None
         out: list[Any] = []
         for el in obj.values():
@@ -157,11 +132,11 @@ class Flatten(Node):
 
     def eval(self, value: Any) -> Any:
         seq = self.base.eval(value)
-        if not _is_list(seq):
+        if not is_list(seq):
             return None
         flat: list[Any] = []
         for el in seq:
-            if _is_list(el):
+            if is_list(el):
                 flat.extend(el)
             else:
                 flat.append(el)
@@ -176,12 +151,12 @@ class FilterProjection(Node):
 
     def eval(self, value: Any) -> Any:
         seq = self.base.eval(value)
-        if not _is_list(seq):
+        if not is_list(seq):
             return None
         out: list[Any] = []
         for el in seq:
             keep = self.cond.eval(el)
-            if _truthy(keep):
+            if truthy(keep):
                 v = self.then.eval(el)
                 if v is not None:
                     out.append(v)
@@ -199,7 +174,7 @@ class Compare(Node):
         right = self.right.eval(value)
         match self.op:
             case "eq" | "ne":
-                eq = _equals(left, right)
+                eq = equals(left, right)
                 return eq if self.op == "eq" else (not eq)
             case "lt":
                 return left < right
@@ -209,7 +184,7 @@ class Compare(Node):
                 return left > right
             case "gte":
                 return left >= right
-            case _ if not (_comparable(left) and _comparable(right)):
+            case _ if not (is_comparable(left) and is_comparable(right)):
                 return None
 
 
@@ -220,7 +195,7 @@ class And(Node):
 
     def eval(self, value: Any) -> Any:
         left = self.left.eval(value)
-        return left if _falsy(left) else self.right.eval(value)
+        return left if falsy(left) else self.right.eval(value)
 
 
 @dataclass(slots=True)
@@ -230,7 +205,7 @@ class Or(Node):
 
     def eval(self, value: Any) -> Any:
         left = self.left.eval(value)
-        return self.right.eval(value) if _falsy(left) else left
+        return self.right.eval(value) if falsy(left) else left
 
 
 @dataclass(slots=True)
@@ -239,7 +214,7 @@ class Not(Node):
 
     def eval(self, value: Any) -> Any:
         v = self.expr.eval(value)
-        if _is_number(v) and v == 0:
+        if is_number(v) and v == 0:
             return False
         return not v
 
@@ -250,7 +225,7 @@ class Length(Node):
 
     def eval(self, value: Any) -> Any:
         x = self.inner.eval(value)
-        if _is_sized(x):
+        if is_sized(x):
             return len(x)
         return None
 
@@ -261,7 +236,7 @@ class Sort(Node):
 
     def eval(self, value: Any) -> Any:
         xs = self.inner.eval(value)
-        if _is_list(xs):
+        if is_list(xs):
             try:
                 return sorted(xs)
             except Exception:
@@ -275,7 +250,7 @@ class Keys(Node):
 
     def eval(self, value: Mapping[Any, Any] | Any) -> Any:
         x = self.inner.eval(value)
-        return list(x.keys()) if _is_mapping(x) else None
+        return list(x.keys()) if is_mapping(x) else None
 
 
 @dataclass(slots=True)
@@ -284,7 +259,7 @@ class Values(Node):
 
     def eval(self, value: Any) -> Any:
         x = self.inner.eval(value)
-        return list(x.values()) if _is_mapping(x) else None
+        return list(x.values()) if is_mapping(x) else None
 
 
 @dataclass(slots=True)
@@ -293,7 +268,7 @@ class ToArray(Node):
 
     def eval(self, value: Any) -> Any:
         x = self.inner.eval(value)
-        return x if _is_list(x) else [x]
+        return x if is_list(x) else [x]
 
 
 @dataclass(slots=True)
@@ -337,7 +312,7 @@ class MapApply(Node):
 
     def eval(self, value: Any) -> Any:
         arr = self.base.eval(value)
-        if not _is_list(arr):
+        if not is_list(arr):
             return None
         out: list[Any] = []
         for el in arr:
@@ -353,8 +328,8 @@ class SortBy(Node):
 
     def eval(self, value: Any) -> Any:
         arr = self.base.eval(value)
-        if not _is_list(arr) or not arr:
-            return arr if _is_list(arr) else None
+        if not is_list(arr) or not arr:
+            return arr if is_list(arr) else None
 
         def key(el: Any) -> Any:
             expr = self.key_of(Identity())
@@ -373,7 +348,7 @@ class MinBy(Node):
 
     def eval(self, value: Any) -> Any:
         arr = self.base.eval(value)
-        if not _is_list(arr) or not arr:
+        if not is_list(arr) or not arr:
             return None
 
         def key(el: Any) -> Any:
@@ -393,7 +368,7 @@ class MaxBy(Node):
 
     def eval(self, value: Any) -> Any:
         arr = self.base.eval(value)
-        if not _is_list(arr) or not arr:
+        if not is_list(arr) or not arr:
             return None
 
         def key(el: Any) -> Any:
