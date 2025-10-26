@@ -77,7 +77,7 @@ CASES: list[Case] = [
         name="filter-then-name",
         build=lambda: (
             qd.identity().users.filter(
-                qd.identity().age.gte(qd.lit(18)),
+                qd.identity().age.gte(18),
                 then=qd.identity().name,
             )
         ),
@@ -98,16 +98,16 @@ CASES: list[Case] = [
     ),
     Case(
         name="numbers-vs-bool-eq",
-        build=lambda: qd.identity().numbers.index(0).eq(qd.lit(False)),
+        build=lambda: qd.identity().numbers.index(0).eq(False),
         data=DATA_EDGE,
     ),
     Case(
         name="and-or-not",
         build=lambda: (
             qd.identity()
-            .obj.x.y.z.gt(qd.lit(1))
-            .and_(qd.identity().obj.x.y.z.eq(qd.lit(5)).not_())
-            .or_(qd.lit(0))
+            .obj.x.y.z.gt(1)
+            .and_(qd.identity().obj.x.y.z.eq(5).not_())
+            .or_(0)
         ),
         data=DATA_EDGE,
     ),

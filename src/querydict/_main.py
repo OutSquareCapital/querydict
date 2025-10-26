@@ -6,13 +6,26 @@ from typing import Any, Self
 
 from . import _nodes as nd
 
+type KeyOp = Callable[[Query], Query]
 
-@dataclass(slots=True)
+
+def into_expr(obj: Any) -> nd.Node:
+    match obj:
+        case Query():
+            return obj.node
+        case _:
+            return nd.LiteralExpr(obj)
+
+
+@dataclass(slots=True, repr=False)
 class Query:
     node: nd.Node
 
     def _new(self, node: nd.Node) -> Self:
         return self.__class__(node)
+
+    def __repr__(self) -> str:
+        return f"Query({self.node.as_jmespath() or '@'})"
 
     def __getattr__(self, name: str) -> Self:
         return self.field(name)
@@ -53,29 +66,29 @@ class Query:
             nd.FilterProjection(self.node, (then or identity()).node, cond.node)
         )
 
-    def eq(self, other: Self) -> Self:
-        return self._new(nd.Compare("eq", self.node, other.node))
+    def eq(self, other: Any) -> Self:
+        return self._new(nd.Compare("eq", self.node, into_expr(other)))
 
-    def ne(self, other: Self) -> Self:
-        return self._new(nd.Compare("ne", self.node, other.node))
+    def ne(self, other: Any) -> Self:
+        return self._new(nd.Compare("ne", self.node, into_expr(other)))
 
-    def lt(self, other: Self) -> Self:
-        return self._new(nd.Compare("lt", self.node, other.node))
+    def lt(self, other: Any) -> Self:
+        return self._new(nd.Compare("lt", self.node, into_expr(other)))
 
-    def lte(self, other: Self) -> Self:
-        return self._new(nd.Compare("lte", self.node, other.node))
+    def lte(self, other: Any) -> Self:
+        return self._new(nd.Compare("lte", self.node, into_expr(other)))
 
-    def gt(self, other: Self) -> Self:
-        return self._new(nd.Compare("gt", self.node, other.node))
+    def gt(self, other: Any) -> Self:
+        return self._new(nd.Compare("gt", self.node, into_expr(other)))
 
-    def gte(self, other: Self) -> Self:
-        return self._new(nd.Compare("gte", self.node, other.node))
+    def gte(self, other: Any) -> Self:
+        return self._new(nd.Compare("gte", self.node, into_expr(other)))
 
-    def and_(self, other: Self) -> Self:
-        return self._new(nd.And(self.node, other.node))
+    def and_(self, other: Any) -> Self:
+        return self._new(nd.And(self.node, into_expr(other)))
 
-    def or_(self, other: Self) -> Self:
-        return self._new(nd.Or(self.node, other.node))
+    def or_(self, other: Any) -> Self:
+        return self._new(nd.Or(self.node, into_expr(other)))
 
     def not_(self) -> Self:
         return self._new(nd.Not(self.node))
@@ -101,25 +114,25 @@ class Query:
     def to_number(self) -> Self:
         return self._new(nd.ToNumber(self.node))
 
-    def map_with(self, build: Callable[[Query], Query]) -> Self:
+    def map_with(self, build: KeyOp) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
             return build(identity()).node
 
         return self._new(nd.MapApply(self.node, _b))
 
-    def sort_by(self, key: Callable[[Query], Query]) -> Self:
+    def sort_by(self, key: KeyOp) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
             return key(identity()).node
 
         return self._new(nd.SortBy(self.node, _b))
 
-    def min_by(self, key: Callable[[Query], Query]) -> Self:
+    def min_by(self, key: KeyOp) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
             return key(identity()).node
 
         return self._new(nd.MinBy(self.node, _b))
 
-    def max_by(self, key: Callable[[Query], Query]) -> Self:
+    def max_by(self, key: KeyOp) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
             return key(identity()).node
 
