@@ -14,6 +14,9 @@ class Query:
     def _new(self, node: nd.Node) -> Self:
         return self.__class__(node)
 
+    def __getattr__(self, name: str) -> Self:
+        return self.field(name)
+
     def field(self, name: str) -> Self:
         if isinstance(self.node, nd.SubExpr):
             node = nd.SubExpr(self.node.parts + (nd.Field(name),))
