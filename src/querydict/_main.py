@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Self
 
 from . import _nodes as nd
-from ._core import IDENTITY
+from ._core import CURRENT
 
 type KeyOp = Callable[[Query], Query]
 
@@ -29,7 +29,7 @@ class Query:
         return self.node.as_jmespath()
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.node.as_jmespath() or IDENTITY})"
+        return f"{self.__class__.__name__}({self.node.as_jmespath() or CURRENT})"
 
     def __getattr__(self, name: str) -> Self:
         return self.field(name)

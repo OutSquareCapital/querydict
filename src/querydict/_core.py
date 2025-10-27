@@ -8,7 +8,7 @@ from typing import Any
 
 from ._checks import equals, falsy, is_comparable
 
-IDENTITY = "@"
+CURRENT = "@"
 
 
 def as_ref(fnode: Node) -> str:
@@ -17,13 +17,13 @@ def as_ref(fnode: Node) -> str:
         case s if s.startswith("&"):
             return s
         case s if s == "":
-            return f"&{IDENTITY}"
+            return f"&{CURRENT}"
         case _:
             return f"&{s}"
 
 
 def _is_leading_dot(text: str) -> bool:
-    return text.startswith((".", "[", "{", "(", "`", IDENTITY) or text == "")
+    return text.startswith((".", "[", "{", "(", "`", CURRENT) or text == "")
 
 
 def ensure_leading_dot(text: str) -> str:
@@ -36,7 +36,7 @@ def ensure_leading_dot(text: str) -> str:
 
 class Node(ABC):
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.as_jmespath() or IDENTITY})"
+        return f"{self.__class__.__name__}({self.as_jmespath() or CURRENT})"
 
     @abstractmethod
     def eval(self, value: Any) -> Any:
@@ -120,7 +120,7 @@ class CallableNode(Node):
         return self.__class__.__name__.lower()
 
     def as_jmespath(self) -> str:
-        return f"{self.func}({self.inner.as_jmespath() or IDENTITY})"
+        return f"{self.func}({self.inner.as_jmespath() or CURRENT})"
 
 
 @dataclass(slots=True, repr=False)

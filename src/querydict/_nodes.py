@@ -7,7 +7,7 @@ from typing import Any
 
 from ._checks import is_list, is_mapping, is_number, is_sized, truthy
 from ._core import (
-    IDENTITY,
+    CURRENT,
     AssociativeNode,
     CallableNode,
     Converter,
@@ -405,7 +405,7 @@ class MultiList(Node):
         return [it.eval(value) for it in self.items]
 
     def as_jmespath(self) -> str:
-        inner = ", ".join(it.as_jmespath() or IDENTITY for it in self.items)
+        inner = ", ".join(it.as_jmespath() or CURRENT for it in self.items)
         return f"[{inner}]"
 
 
@@ -420,7 +420,5 @@ class MultiDict(Node):
         return d
 
     def as_jmespath(self) -> str:
-        items = ", ".join(
-            f"{k}: {n.as_jmespath() or IDENTITY}" for k, n in self.mapping
-        )
+        items = ", ".join(f"{k}: {n.as_jmespath() or CURRENT}" for k, n in self.mapping)
         return f"{{{items}}}"
