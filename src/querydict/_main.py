@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import operator
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Self
 
 from . import _nodes as nd
-from ._core import CURRENT, BinaryNode
+from ._checks import eq, ne
+from ._core import BinaryNode, BinaryOp, Comparator, EqBase, Kword
 
 type KeyOp = Callable[[Query], Query]
 
@@ -26,6 +28,11 @@ class Query:
 
     def _new(self, node: nd.Node) -> Self:
         return self.__class__(node)
+
+    def _new_binary_op(
+        self, sort: type[BinaryOp], right: Any, op: Callable[[Any, Any], bool]
+    ) -> Self:
+        return self._new(sort(self.node, into_expr(right), op))
 
     def _new_binary(
         self, op: Callable[[nd.Node, nd.Node], BinaryNode], right: Any
@@ -49,7 +56,7 @@ class Query:
         return self.node.as_jmespath()
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.node.as_jmespath() or CURRENT})"
+        return f"{self.__class__.__name__}({self.node.as_jmespath() or Kword.CURRENT})"
 
     def __getattr__(self, name: str) -> Self:
         return self.field(name)
@@ -70,10 +77,10 @@ class Query:
         return self._new(nd.SubExpr((self.node, nd.Slice(start, end, step))))
 
     def project(self, rhs: Any) -> Self:
-        return self._new(nd.Projection(self.node, into_expr(rhs)))
+        return self._new(nd.ArrayProject(self.node, into_expr(rhs)))
 
     def vproject(self, rhs: Any) -> Self:
-        return self._new(nd.ValueProjection(self.node, into_expr(rhs)))
+        return self._new(nd.ObjectProject(self.node, into_expr(rhs)))
 
     def flatten(self) -> Self:
         return self._new_unary(nd.Flatten)
@@ -82,22 +89,22 @@ class Query:
         return self._new(nd.FilterProjection(self.node, into_expr(then), cond.node))
 
     def eq(self, other: Any) -> Self:
-        return self._new_binary(nd.Eq, other)
+        return self._new_binary_op(EqBase, other, eq)
 
     def ne(self, other: Any) -> Self:
-        return self._new_binary(nd.Ne, other)
+        return self._new_binary_op(EqBase, other, ne)
 
     def lt(self, other: Any) -> Self:
-        return self._new_binary(nd.Lt, other)
+        return self._new_binary_op(Comparator, other, operator.lt)
 
-    def lte(self, other: Any) -> Self:
-        return self._new_binary(nd.Lte, other)
+    def le(self, other: Any) -> Self:
+        return self._new_binary_op(Comparator, other, operator.le)
 
     def gt(self, other: Any) -> Self:
-        return self._new_binary(nd.Gt, other)
+        return self._new_binary_op(Comparator, other, operator.gt)
 
-    def gte(self, other: Any) -> Self:
-        return self._new_binary(nd.Gte, other)
+    def ge(self, other: Any) -> Self:
+        return self._new_binary_op(Comparator, other, operator.ge)
 
     def and_(self, other: Any) -> Self:
         return self._new_binary(nd.And, other)

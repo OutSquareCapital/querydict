@@ -1,22 +1,18 @@
 from __future__ import annotations
 
-import operator
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ._checks import is_list, is_mapping, is_number, is_sized, truthy
+from ._checks import is_list, is_mapping, is_number, is_sized, not_empty
 from ._core import (
-    CURRENT,
-    DOT,
     AssociativeNode,
     CallableNode,
     Converter,
-    EqBase,
     Identity,
     KeyNode,
+    Kword,
     Node,
-    OrderBase,
     ProjectionBase,
     as_ref,
     ensure_leading_dot,
@@ -46,7 +42,7 @@ class Field(Node):
         return None
 
     def as_jmespath(self) -> str:
-        return DOT + self.name
+        return Kword.DOT + self.name
 
 
 @dataclass(slots=True, repr=False)
@@ -97,7 +93,7 @@ class SubExpr(Node):
 
     def as_jmespath(self) -> str:
         s = "".join(p.as_jmespath() for p in self.parts)
-        return s[1:] if s.startswith(DOT) else s
+        return s[1:] if s.startswith(Kword.DOT) else s
 
 
 @dataclass(slots=True, repr=False)
@@ -109,20 +105,20 @@ class Pipe(Node):
         return self.right.eval(self.left.eval(value))
 
     def as_jmespath(self) -> str:
-        return f"{self.left.as_jmespath()} | {self.right.as_jmespath()}"
+        return f"{self.left.as_jmespath()} {Kword.PIPE} {self.right.as_jmespath()}"
 
 
 @dataclass(slots=True, repr=False)
-class Projection(ProjectionBase):
-    SEP: str = "[*]"
+class ArrayProject(ProjectionBase):
+    SEP: Kword = Kword.ARRAY_PROJECT
 
     def _iter(self, value: Any) -> list[Any] | None:
         return value if is_list(value) else None
 
 
 @dataclass(slots=True, repr=False)
-class ValueProjection(ProjectionBase):
-    SEP: str = "*"
+class ObjectProject(ProjectionBase):
+    SEP: Kword = Kword.OBJECT_PROJECT
 
     def _iter(self, value: Any) -> list[Any] | None:
         return list(value.values()) if is_mapping(value) else None
@@ -138,12 +134,12 @@ class FilterProjection(Node):
         seq = self.base.eval(value)
         if not is_list(seq):
             return None
-        return [self.then.eval(el) for el in seq if truthy(self.cond.eval(el))]
+        return [self.then.eval(el) for el in seq if not_empty(self.cond.eval(el))]
 
     def as_jmespath(self) -> str:
         base = self.base.as_jmespath()
         cond = self.cond.as_jmespath()
-        cond = cond[1:] if cond.startswith(DOT) else cond
+        cond = cond[1:] if cond.startswith(Kword.DOT) else cond
         then = ensure_leading_dot(self.then.as_jmespath())
         return f"{base}[?{cond}]{then}"
 
@@ -165,57 +161,20 @@ class Flatten(Node):
         return flat
 
     def as_jmespath(self) -> str:
-        return self.base.as_jmespath() + "[]"
-
-
-@dataclass(slots=True, repr=False)
-class Eq(EqBase):
-    SYMBOL: str = "=="
-
-    def eval(self, value: Any) -> bool:
-        return self._equals(value)
-
-
-@dataclass(slots=True, repr=False)
-class Ne(EqBase):
-    SYMBOL: str = "!="
-
-    def eval(self, value: Any) -> bool:
-        return not self._equals(value)
-
-
-@dataclass(slots=True, repr=False)
-class Lt(OrderBase):
-    SYMBOL: str = "<"
-    OP: Callable[[Any, Any], bool] = operator.lt
-
-
-@dataclass(slots=True, repr=False)
-class Lte(OrderBase):
-    SYMBOL: str = "<="
-    OP: Callable[[Any, Any], bool] = operator.le
-
-
-@dataclass(slots=True, repr=False)
-class Gt(OrderBase):
-    SYMBOL: str = ">"
-    OP: Callable[[Any, Any], bool] = operator.gt
-
-
-@dataclass(slots=True, repr=False)
-class Gte(OrderBase):
-    SYMBOL: str = ">="
-    OP: Callable[[Any, Any], bool] = operator.ge
+        return self.base.as_jmespath() + Kword.FLATTEN
 
 
 @dataclass(slots=True, repr=False)
 class And(AssociativeNode):
-    SYMBOL: str = "&&"
+    def eval(self, value: Any) -> Any:
+        left = self.left.eval(value)
+        return self.right.eval(value) if not_empty(left) else left
 
 
+# ...existing code...
 @dataclass(slots=True, repr=False)
 class Or(AssociativeNode):
-    SYMBOL: str = "||"
+    pass
 
 
 @dataclass(slots=True, repr=False)
@@ -361,7 +320,7 @@ class MultiList(Node):
         return [it.eval(value) for it in self.items]
 
     def as_jmespath(self) -> str:
-        inner = ", ".join(it.as_jmespath() or CURRENT for it in self.items)
+        inner = ", ".join(it.as_jmespath() or Kword.CURRENT for it in self.items)
         return f"[{inner}]"
 
 
@@ -373,5 +332,7 @@ class MultiDict(Node):
         return {k: n.eval(value) for k, n in self.mapping}
 
     def as_jmespath(self) -> str:
-        items = ", ".join(f"{k}: {n.as_jmespath() or CURRENT}" for k, n in self.mapping)
+        items = ", ".join(
+            f"{k}: {n.as_jmespath() or Kword.CURRENT}" for k, n in self.mapping
+        )
         return f"{{{items}}}"

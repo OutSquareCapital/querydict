@@ -76,7 +76,7 @@ CASES: list[Case] = [
         name="filter-then-name",
         build=lambda: (
             qd.field("users").filter(
-                qd.field("age").gte(18),
+                qd.field("age").ge(18),
                 then="name",
             )
         ),

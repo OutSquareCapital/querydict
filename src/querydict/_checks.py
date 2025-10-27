@@ -22,7 +22,7 @@ def is_comparable(x: Any) -> bool:
     return is_number(x) or isinstance(x, str)
 
 
-def equals(x: Any, y: Any) -> bool:
+def eq(x: Any, y: Any) -> bool:
     if is_number(x) and x in (0, 1):
         return not isinstance(y, bool)
     if is_number(y) and y in (0, 1):
@@ -30,9 +30,13 @@ def equals(x: Any, y: Any) -> bool:
     return x == y
 
 
-def falsy(v: Any) -> bool:
+def ne(x: Any, y: Any) -> bool:
+    return not eq(x, y)
+
+
+def is_empty(v: Any) -> bool:
     return v in ("", [], {}) or v is None or v is False
 
 
-def truthy(v: Any) -> bool:
-    return not falsy(v)
+def not_empty(v: Any) -> bool:
+    return not is_empty(v)

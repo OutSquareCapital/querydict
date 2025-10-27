@@ -1,29 +1,44 @@
 from __future__ import annotations
 
-import operator
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
-from ._checks import equals, falsy, is_comparable, is_list
+from ._checks import is_comparable, is_list, not_empty
 
-CURRENT = "@"
-REF = "&"
-DOT = "."
+
+class Kword(StrEnum):
+    CURRENT = "@"
+    REF = "&"
+    DOT = "."
+    ARRAY_PROJECT = "[*]"
+    OBJECT_PROJECT = "*"
+    FLATTEN = "[]"
+    EQ = "=="
+    NE = "!="
+    LT = "<"
+    LE = "<="
+    GT = ">"
+    GE = ">="
+    AND = "&&"
+    OR = "||"
+    PIPE = "|"
+    SPACE = " "
 
 
 def as_ref(fnode: Node) -> str:
     s = fnode.as_jmespath()
     match s:
-        case s if s.startswith(REF):
+        case s if s.startswith(Kword.REF):
             return s
         case _:
-            return REF + s or CURRENT
+            return Kword.REF + s or Kword.CURRENT
 
 
 def _is_leading_dot(text: str) -> bool:
-    return text.startswith((DOT, "[", "{", "(", "`", CURRENT) or text == "")
+    return text.startswith((Kword.DOT, "[", "{", "(", "`", Kword.CURRENT) or text == "")
 
 
 def ensure_leading_dot(text: str) -> str:
@@ -31,12 +46,12 @@ def ensure_leading_dot(text: str) -> str:
         case text if _is_leading_dot(text):
             return text
         case _:
-            return DOT + text
+            return Kword.DOT + text
 
 
 class Node(ABC):
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.as_jmespath() or CURRENT})"
+        return f"{self.__class__.__name__}({self.as_jmespath() or Kword.CURRENT})"
 
     @abstractmethod
     def eval(self, value: Any) -> Any:
@@ -53,7 +68,7 @@ class Node(ABC):
 class ProjectionBase(Node):
     base: Node
     rhs: Node
-    SEP: str
+    SEP: Kword
 
     @abstractmethod
     def _iter(self, value: Any) -> list[Any] | None:
@@ -73,22 +88,34 @@ class ProjectionBase(Node):
 class BinaryNode(Node):
     left: Node
     right: Node
-    SYMBOL: str
+
+    @property
+    def _kword(self) -> str:
+        return self.__class__.__name__.upper()
 
     def as_jmespath(self) -> str:
-        return f"{self.left.as_jmespath()} {self.SYMBOL} {self.right.as_jmespath()}"
+        return (
+            f"{self.left.as_jmespath()} {Kword[self._kword]} {self.right.as_jmespath()}"
+        )
 
 
 @dataclass(slots=True, repr=False)
-class EqBase(BinaryNode):
-    def _equals(self, value: Any) -> bool:
-        return equals(self.left.eval(value), self.right.eval(value))
+class BinaryOp(BinaryNode):
+    OP: Callable[[Any, Any], bool]
+
+    @property
+    def _kword(self) -> str:
+        return self.OP.__name__.upper()
 
 
 @dataclass(slots=True, repr=False)
-class OrderBase(BinaryNode):
-    OP: Callable[[Any, Any], bool] = operator.lt
+class EqBase(BinaryOp):
+    def eval(self, value: Any) -> bool:
+        return self.OP(self.left.eval(value), self.right.eval(value))
 
+
+@dataclass(slots=True, repr=False)
+class Comparator(BinaryOp):
     def eval(self, value: Any) -> bool | None:
         left = self.left.eval(value)
         right = self.right.eval(value)
@@ -101,7 +128,7 @@ class OrderBase(BinaryNode):
 class AssociativeNode(BinaryNode):
     def eval(self, value: Any) -> Any:
         left = self.left.eval(value)
-        return left if falsy(left) else self.right.eval(value)
+        return left if not_empty(left) else self.right.eval(value)
 
 
 @dataclass(slots=True, repr=False)
@@ -113,7 +140,7 @@ class CallableNode(Node):
         return self.__class__.__name__.lower()
 
     def as_jmespath(self) -> str:
-        return f"{self.func}({self.inner.as_jmespath() or CURRENT})"
+        return f"{self.func}({self.inner.as_jmespath() or Kword.CURRENT})"
 
 
 @dataclass(slots=True, repr=False)
