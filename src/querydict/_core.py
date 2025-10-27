@@ -6,24 +6,24 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from ._checks import equals, falsy, is_comparable
+from ._checks import equals, falsy, is_comparable, is_list
 
 CURRENT = "@"
+REF = "&"
+DOT = "."
 
 
 def as_ref(fnode: Node) -> str:
     s = fnode.as_jmespath()
     match s:
-        case s if s.startswith("&"):
+        case s if s.startswith(REF):
             return s
-        case s if s == "":
-            return f"&{CURRENT}"
         case _:
-            return f"&{s}"
+            return REF + s or CURRENT
 
 
 def _is_leading_dot(text: str) -> bool:
-    return text.startswith((".", "[", "{", "(", "`", CURRENT) or text == "")
+    return text.startswith((DOT, "[", "{", "(", "`", CURRENT) or text == "")
 
 
 def ensure_leading_dot(text: str) -> str:
@@ -31,7 +31,7 @@ def ensure_leading_dot(text: str) -> str:
         case text if _is_leading_dot(text):
             return text
         case _:
-            return "." + text
+            return DOT + text
 
 
 class Node(ABC):
@@ -128,3 +128,33 @@ class Converter(CallableNode):
     @property
     def func(self) -> str:
         return "to_" + self.__class__.__name__.lower()
+
+
+@dataclass(slots=True, repr=False)
+class Identity(Node):
+    def eval(self, value: Any) -> Any:
+        return value
+
+    def as_jmespath(self) -> str:
+        return ""
+
+
+@dataclass(slots=True, repr=False)
+class KeyNode(Node):
+    base: Node
+    key_of: Callable[[Identity], Node]
+    key_name: str
+
+    def _key(self, el: Any) -> Any:
+        return self.key_of(Identity()).eval(el)
+
+    def _eval_impl(self, arr: list[Any]) -> Any: ...
+
+    def eval(self, value: Any) -> Any:
+        arr = self.base.eval(value)
+        if not is_list(arr) or not arr:
+            return arr if is_list(arr) else None
+        return self._eval_impl(arr)
+
+    def as_jmespath(self) -> str:
+        return f"{self.key_name}({self.base.as_jmespath()}, {as_ref(self.key_of(Identity()))})"

@@ -8,25 +8,19 @@ from typing import Any
 from ._checks import is_list, is_mapping, is_number, is_sized, truthy
 from ._core import (
     CURRENT,
+    DOT,
     AssociativeNode,
     CallableNode,
     Converter,
     EqBase,
+    Identity,
+    KeyNode,
     Node,
     OrderBase,
     ProjectionBase,
     as_ref,
     ensure_leading_dot,
 )
-
-
-@dataclass(slots=True, repr=False)
-class Identity(Node):
-    def eval(self, value: Any) -> Any:
-        return value
-
-    def as_jmespath(self) -> str:
-        return ""
 
 
 @dataclass(slots=True, repr=False)
@@ -52,7 +46,7 @@ class Field(Node):
         return None
 
     def as_jmespath(self) -> str:
-        return f".{self.name}"
+        return DOT + self.name
 
 
 @dataclass(slots=True, repr=False)
@@ -103,7 +97,7 @@ class SubExpr(Node):
 
     def as_jmespath(self) -> str:
         s = "".join(p.as_jmespath() for p in self.parts)
-        return s[1:] if s.startswith(".") else s
+        return s[1:] if s.startswith(DOT) else s
 
 
 @dataclass(slots=True, repr=False)
@@ -149,8 +143,7 @@ class FilterProjection(Node):
     def as_jmespath(self) -> str:
         base = self.base.as_jmespath()
         cond = self.cond.as_jmespath()
-        if cond.startswith("."):
-            cond = cond[1:]
+        cond = cond[1:] if cond.startswith(DOT) else cond
         then = ensure_leading_dot(self.then.as_jmespath())
         return f"{base}[?{cond}]{then}"
 
@@ -172,7 +165,7 @@ class Flatten(Node):
         return flat
 
     def as_jmespath(self) -> str:
-        return f"{self.base.as_jmespath()}[]"
+        return self.base.as_jmespath() + "[]"
 
 
 @dataclass(slots=True, repr=False)
@@ -328,73 +321,36 @@ class MapApply(Node):
 
 
 @dataclass(slots=True, repr=False)
-class SortBy(Node):
-    base: Node
-    key_of: Callable[[Identity], Node]
+class SortBy(KeyNode):
+    key_name: str = "sort_by"
 
-    def eval(self, value: Any) -> list[Any] | None:
-        arr = self.base.eval(value)
-        if not is_list(arr) or not arr:
-            return arr if is_list(arr) else None
-
-        def key(el: Any) -> Any:
-            return self.key_of(Identity()).eval(el)
-
+    def _eval_impl(self, arr: list[Any]) -> list[Any]:
         try:
-            return sorted(arr, key=key)
+            return sorted(arr, key=self._key)
         except Exception:
             return arr
 
-    def as_jmespath(self) -> str:
-        key = as_ref(self.key_of(Identity()))
-        return f"sort_by({self.base.as_jmespath()}, {key})"
-
 
 @dataclass(slots=True, repr=False)
-class MinBy(Node):
-    base: Node
-    key_of: Callable[[Identity], Node]
+class MinBy(KeyNode):
+    key_name: str = "min_by"
 
-    def eval(self, value: Any) -> Any:
-        arr = self.base.eval(value)
-        if not is_list(arr) or not arr:
-            return None
-
-        def key(el: Any) -> Any:
-            return self.key_of(Identity()).eval(el)
-
+    def _eval_impl(self, arr: list[Any]) -> list[Any] | None:
         try:
-            return min(arr, key=key)
+            return min(arr, key=self._key)
         except Exception:
             return None
 
-    def as_jmespath(self) -> str:
-        key = as_ref(self.key_of(Identity()))
-        return f"min_by({self.base.as_jmespath()}, {key})"
-
 
 @dataclass(slots=True, repr=False)
-class MaxBy(Node):
-    base: Node
-    key_of: Callable[[Identity], Node]
+class MaxBy(KeyNode):
+    key_name: str = "max_by"
 
-    def eval(self, value: Any) -> Any:
-        arr = self.base.eval(value)
-        if not is_list(arr) or not arr:
-            return None
-
-        def key(el: Any) -> Any:
-            expr = self.key_of(Identity())
-            return expr.eval(el)
-
+    def _eval_impl(self, arr: list[Any]) -> list[Any] | None:
         try:
-            return max(arr, key=key)
+            return max(arr, key=self._key)
         except Exception:
             return None
-
-    def as_jmespath(self) -> str:
-        key = as_ref(self.key_of(Identity()))
-        return f"max_by({self.base.as_jmespath()}, {key})"
 
 
 @dataclass(slots=True, repr=False)
@@ -414,10 +370,7 @@ class MultiDict(Node):
     mapping: tuple[tuple[str, Node], ...]
 
     def eval(self, value: Any) -> Any:
-        d: dict[str, Any] = {}
-        for k, n in self.mapping:
-            d[k] = n.eval(value)
-        return d
+        return {k: n.eval(value) for k, n in self.mapping}
 
     def as_jmespath(self) -> str:
         items = ", ".join(f"{k}: {n.as_jmespath() or CURRENT}" for k, n in self.mapping)
