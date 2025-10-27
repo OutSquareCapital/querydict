@@ -80,37 +80,7 @@ def time_query(query_func: QueryFunc, data: JsonData, number: int) -> float:
     return total_time / number
 
 
-def main(runs: int) -> pl.DataFrame:
-    print(f"Lancement des benchmarks (Runs par test: {runs})\n")
-    results: list[BenchmarkResult] = []
-    for size in DATA_SIZES:
-        data = generate_data(size)
-
-        for case in BENCHMARKS:
-            try:
-                assert case.qd_query.to_jmespath() == case.jp_expr
-            except AssertionError:
-                raise ValueError(
-                    f"JMESPath mismatch for case '{case.name}': \n"
-                    f"{case.qd_query.to_jmespath()!r} != \n{case.jp_expr!r}"
-                )
-
-            jp_expr = case.qd_query.to_jmespath()
-            jp_compiled = jmespath.compile(jp_expr)
-
-            t_qd = time_query(case.qd_query.search, data, runs)
-            t_jp_c = time_query(jp_compiled.search, data, runs)
-            t_jp_e = time_query(lambda d: jmespath.search(jp_expr, d), data, runs)
-
-            results.append(
-                BenchmarkResult(
-                    size=size,
-                    case_name=case.name,
-                    qrydict=t_qd,
-                    jmespth=t_jp_c,
-                    jmwapth_compiled=t_jp_e,
-                )
-            )
+def format_results(results: list[BenchmarkResult]) -> pl.DataFrame:
     return (
         pl.LazyFrame(results)
         .unpivot(index=["size", "case_name"], variable_name="lib", value_name="time")
@@ -123,6 +93,45 @@ def main(runs: int) -> pl.DataFrame:
         .sort("case_name", "size")
         .collect()
     )
+
+
+def add_case(
+    case: BenchmarkCase, size: int, runs: int, data: JsonData
+) -> BenchmarkResult:
+    try:
+        assert case.qd_query.to_jmespath() == case.jp_expr
+    except AssertionError:
+        raise ValueError(
+            f"JMESPath mismatch for case '{case.name}': \n"
+            f"{case.qd_query.to_jmespath()!r} != \n{case.jp_expr!r}"
+        )
+
+    jp_expr = case.qd_query.to_jmespath()
+    jp_compiled = jmespath.compile(jp_expr)
+
+    t_qd = time_query(case.qd_query.search, data, runs)
+    t_jp_c = time_query(jp_compiled.search, data, runs)
+    t_jp_e = time_query(lambda d: jmespath.search(jp_expr, d), data, runs)
+
+    return BenchmarkResult(
+        size=size,
+        case_name=case.name,
+        qrydict=t_qd,
+        jmespth=t_jp_c,
+        jmwapth_compiled=t_jp_e,
+    )
+
+
+def main(runs: int) -> pl.DataFrame:
+    print(f"Lancement des benchmarks (Runs par test: {runs})\n")
+    results: list[BenchmarkResult] = []
+    for size in DATA_SIZES:
+        data = generate_data(size)
+
+        for case in BENCHMARKS:
+            results.append(add_case(case, size, runs, data))
+
+    return format_results(results)
 
 
 if __name__ == "__main__":
