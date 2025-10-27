@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import json as _json
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,12 +24,15 @@ from ._core import (
 class LiteralExpr(Node):
     value: Any
 
-    def eval(self, value: Any) -> Any:
-        return self.value
+    def eval(self) -> Callable[[Any], Any]:
+        val = self.value
+
+        def _eval(value: Any) -> Any:
+            return val
+
+        return _eval
 
     def as_jmespath(self) -> str:
-        import json as _json
-
         return f"`{_json.dumps(self.value, separators=(',', ':'), default=str)}`"
 
 
@@ -36,10 +40,15 @@ class LiteralExpr(Node):
 class Field(Node):
     name: str
 
-    def eval(self, value: Any) -> Any:
-        if is_mapping(value):
-            return value.get(self.name)
-        return None
+    def eval(self) -> Callable[[Any], Any]:
+        name = self.name
+
+        def _eval(value: Any) -> Any:
+            if is_mapping(value):
+                return value.get(name)
+            return None
+
+        return _eval
 
     def as_jmespath(self) -> str:
         return Kword.DOT + self.name
@@ -49,13 +58,18 @@ class Field(Node):
 class Index(Node):
     i: int
 
-    def eval(self, value: Any) -> Any:
-        if not is_list(value):
-            return None
-        try:
-            return value[self.i]
-        except IndexError:
-            return None
+    def eval(self) -> Callable[[Any], Any]:
+        idx = self.i
+
+        def _eval(value: Any) -> Any:
+            if not is_list(value):
+                return None
+            try:
+                return value[idx]
+            except IndexError:
+                return None
+
+        return _eval
 
     def as_jmespath(self) -> str:
         return f"[{self.i}]"
@@ -67,10 +81,15 @@ class Slice(Node):
     end: int | None
     step: int | None
 
-    def eval(self, value: Any) -> list[Any] | None:
-        if not is_list(value):
-            return None
-        return value[slice(self.start, self.end, self.step)]
+    def eval(self) -> Callable[[Any], list[Any] | None]:
+        slc = slice(self.start, self.end, self.step)
+
+        def _eval(value: Any) -> list[Any] | None:
+            if not is_list(value):
+                return None
+            return value[slc]
+
+        return _eval
 
     def as_jmespath(self) -> str:
         start = "" if self.start is None else str(self.start)
@@ -85,11 +104,16 @@ class Slice(Node):
 class SubExpr(Node):
     parts: tuple[Node, ...]
 
-    def eval(self, value: Any) -> Any:
-        out = value
-        for p in self.parts:
-            out = p.eval(out)
-        return out
+    def eval(self) -> Callable[[Any], Any]:
+        part_evals = tuple(p.eval() for p in self.parts)
+
+        def _eval(value: Any) -> Any:
+            out = value
+            for p_eval in part_evals:
+                out = p_eval(out)
+            return out
+
+        return _eval
 
     def as_jmespath(self) -> str:
         s = "".join(p.as_jmespath() for p in self.parts)
@@ -101,8 +125,14 @@ class Pipe(Node):
     left: Node
     right: Node
 
-    def eval(self, value: Any) -> Any:
-        return self.right.eval(self.left.eval(value))
+    def eval(self) -> Callable[[Any], Any]:
+        left_eval = self.left.eval()
+        right_eval = self.right.eval()
+
+        def _eval(value: Any) -> Any:
+            return right_eval(left_eval(value))
+
+        return _eval
 
     def as_jmespath(self) -> str:
         return f"{self.left.as_jmespath()} {Kword.PIPE} {self.right.as_jmespath()}"
@@ -130,11 +160,18 @@ class FilterProjection(Node):
     then: Node
     cond: Node
 
-    def eval(self, value: Any) -> list[Any] | None:
-        seq = self.base.eval(value)
-        if not is_list(seq):
-            return None
-        return [self.then.eval(el) for el in seq if not_empty(self.cond.eval(el))]
+    def eval(self) -> Callable[[Any], list[Any] | None]:
+        base_eval = self.base.eval()
+        then_eval = self.then.eval()
+        cond_eval = self.cond.eval()
+
+        def _eval(value: Any) -> list[Any] | None:
+            seq = base_eval(value)
+            if not is_list(seq):
+                return None
+            return [then_eval(el) for el in seq if not_empty(cond_eval(el))]
+
+        return _eval
 
     def as_jmespath(self) -> str:
         base = self.base.as_jmespath()
@@ -148,17 +185,22 @@ class FilterProjection(Node):
 class Flatten(Node):
     base: Node
 
-    def eval(self, value: Any) -> Any:
-        seq = self.base.eval(value)
-        if not is_list(seq):
-            return None
-        flat: list[Any] = []
-        for el in seq:
-            if is_list(el):
-                flat.extend(el)
-            else:
-                flat.append(el)
-        return flat
+    def eval(self) -> Callable[[Any], Any]:
+        base_eval = self.base.eval()
+
+        def _eval(value: Any) -> Any:
+            seq = base_eval(value)
+            if not is_list(seq):
+                return None
+            flat: list[Any] = []
+            for el in seq:
+                if is_list(el):
+                    flat.extend(el)
+                else:
+                    flat.append(el)
+            return flat
+
+        return _eval
 
     def as_jmespath(self) -> str:
         return self.base.as_jmespath() + Kword.FLATTEN
@@ -166,26 +208,37 @@ class Flatten(Node):
 
 @dataclass(slots=True, repr=False)
 class And(AssociativeNode):
-    def eval(self, value: Any) -> Any:
-        left = self.left.eval(value)
-        return self.right.eval(value) if not_empty(left) else left
+    def eval(self) -> Callable[[Any], Any]:
+        left_eval = self.left.eval()
+        right_eval = self.right.eval()
+
+        def _eval(value: Any) -> Any:
+            left_val = left_eval(value)
+            return right_eval(value) if not_empty(left_val) else left_val
+
+        return _eval
 
 
-# ...existing code...
 @dataclass(slots=True, repr=False)
 class Or(AssociativeNode):
-    pass
+    pass  # eval inherited from AssociativeNode
 
 
 @dataclass(slots=True, repr=False)
 class Not(Node):
     expr: Node
 
-    def eval(self, value: Any) -> bool:
-        v = self.expr.eval(value)
-        if is_number(v) and v == 0:
-            return False
-        return not v
+    def eval(self) -> Callable[[Any], bool]:
+        expr_eval = self.expr.eval()
+
+        def _eval(value: Any) -> bool:
+            v = expr_eval(value)
+            if is_number(v) and v == 0:
+                # Special case: JMESPath treats 0 as falsey
+                return True
+            return not not_empty(v)
+
+        return _eval
 
     def as_jmespath(self) -> str:
         return f"!{self.expr.as_jmespath()}"
@@ -193,74 +246,112 @@ class Not(Node):
 
 @dataclass(slots=True, repr=False)
 class Length(CallableNode):
-    def eval(self, value: Any) -> int | None:
-        x = self.inner.eval(value)
-        if is_sized(x):
-            return len(x)
-        return None
+    def eval(self) -> Callable[[Any], int | None]:
+        inner_eval = self.inner.eval()
+
+        def _eval(value: Any) -> int | None:
+            x = inner_eval(value)
+            if is_sized(x):
+                return len(x)
+            return None
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
 class Sort(CallableNode):
-    def eval(self, value: Any) -> list[Any] | None:
-        xs = self.inner.eval(value)
-        if is_list(xs):
-            try:
-                return sorted(xs)
-            except Exception:
-                return xs
-        return None
+    def eval(self) -> Callable[[Any], list[Any] | None]:
+        inner_eval = self.inner.eval()
+
+        def _eval(value: Any) -> list[Any] | None:
+            xs = inner_eval(value)
+            if is_list(xs):
+                try:
+                    # Attempt to sort; requires comparable elements
+                    return sorted(xs)
+                except Exception:
+                    # JMESPath returns the original list if sorting fails
+                    return xs
+            return None
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
 class Keys(CallableNode):
-    def eval(self, value: Mapping[Any, Any] | Any) -> list[Any] | None:
-        x = self.inner.eval(value)
-        return list(x.keys()) if is_mapping(x) else None
+    def eval(self) -> Callable[[Any], list[Any] | None]:
+        inner_eval = self.inner.eval()
+
+        def _eval(value: Any) -> list[Any] | None:
+            x = inner_eval(value)
+            return list(x.keys()) if is_mapping(x) else None
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
 class Values(CallableNode):
-    def eval(self, value: Any) -> list[Any] | None:
-        x = self.inner.eval(value)
-        return list(x.values()) if is_mapping(x) else None
+    def eval(self) -> Callable[[Any], list[Any] | None]:
+        inner_eval = self.inner.eval()
+
+        def _eval(value: Any) -> list[Any] | None:
+            x = inner_eval(value)
+            return list(x.values()) if is_mapping(x) else None
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
 class Array(Converter):
-    def eval(self, value: Any) -> list[Any]:
-        x = self.inner.eval(value)
-        return x if is_list(x) else [x]
+    def eval(self) -> Callable[[Any], list[Any]]:
+        inner_eval = self.inner.eval()
+
+        def _eval(value: Any) -> list[Any]:
+            x = inner_eval(value)
+            return x if is_list(x) else [x]
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
 class String(Converter):
-    def eval(self, value: Any) -> Any:
-        import json as _json
+    def eval(self) -> Callable[[Any], Any]:
+        inner_eval = self.inner.eval()
 
-        x = self.inner.eval(value)
-        return (
-            x
-            if isinstance(x, str)
-            else _json.dumps(x, separators=(",", ":"), default=str)
-        )
+        def _eval(value: Any) -> Any:
+            x = inner_eval(value)
+            return (
+                x
+                if isinstance(x, str)
+                else _json.dumps(x, separators=(",", ":"), default=str)
+            )
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
 class Number(Converter):
-    def eval(self, value: Any) -> int | float | None:
-        x = self.inner.eval(value)
-        if isinstance(x, (list, dict, bool)) or x is None:
-            return None
-        if isinstance(x, (int, float)):
-            return x
-        try:
-            return int(x)
-        except Exception:
-            try:
-                return float(x)
-            except Exception:
+    def eval(self) -> Callable[[Any], int | float | None]:
+        inner_eval = self.inner.eval()
+
+        def _eval(value: Any) -> int | float | None:
+            x = inner_eval(value)
+            if isinstance(x, (list, dict, bool)) or x is None:
                 return None
+            if isinstance(x, (int, float)):
+                return x
+            try:
+                # Attempt int conversion first
+                return int(x)
+            except Exception:
+                try:
+                    # Attempt float conversion
+                    return float(x)
+                except Exception:
+                    # Conversion failed
+                    return None
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
@@ -268,11 +359,17 @@ class MapApply(Node):
     base: Node
     build: Callable[[Identity], Node]
 
-    def eval(self, value: Any) -> list[Any] | None:
-        arr = self.base.eval(value)
-        if not is_list(arr):
-            return None
-        return [self.build(Identity()).eval(el) for el in arr]
+    def eval(self) -> Callable[[Any], list[Any] | None]:
+        base_eval = self.base.eval()
+        build_eval = self.build(Identity()).eval()
+
+        def _eval(value: Any) -> list[Any] | None:
+            arr = base_eval(value)
+            if not is_list(arr):
+                return None
+            return [build_eval(el) for el in arr]
+
+        return _eval
 
     def as_jmespath(self) -> str:
         fn = as_ref(self.build(Identity()))
@@ -283,9 +380,9 @@ class MapApply(Node):
 class SortBy(KeyNode):
     key_name: str = "sort_by"
 
-    def _eval_impl(self, arr: list[Any]) -> list[Any]:
+    def _eval_impl(self, arr: list[Any], key_fn: Callable[[Any], Any]) -> list[Any]:
         try:
-            return sorted(arr, key=self._key)
+            return sorted(arr, key=key_fn)
         except Exception:
             return arr
 
@@ -294,9 +391,9 @@ class SortBy(KeyNode):
 class MinBy(KeyNode):
     key_name: str = "min_by"
 
-    def _eval_impl(self, arr: list[Any]) -> list[Any] | None:
+    def _eval_impl(self, arr: list[Any], key_fn: Callable[[Any], Any]) -> Any | None:
         try:
-            return min(arr, key=self._key)
+            return min(arr, key=key_fn)
         except Exception:
             return None
 
@@ -305,9 +402,9 @@ class MinBy(KeyNode):
 class MaxBy(KeyNode):
     key_name: str = "max_by"
 
-    def _eval_impl(self, arr: list[Any]) -> list[Any] | None:
+    def _eval_impl(self, arr: list[Any], key_fn: Callable[[Any], Any]) -> Any | None:
         try:
-            return max(arr, key=self._key)
+            return max(arr, key=key_fn)
         except Exception:
             return None
 
@@ -316,8 +413,13 @@ class MaxBy(KeyNode):
 class MultiList(Node):
     items: tuple[Node, ...]
 
-    def eval(self, value: Any) -> Any:
-        return [it.eval(value) for it in self.items]
+    def eval(self) -> Callable[[Any], Any]:
+        item_evals = tuple(it.eval() for it in self.items)
+
+        def _eval(value: Any) -> Any:
+            return [it_eval(value) for it_eval in item_evals]
+
+        return _eval
 
     def as_jmespath(self) -> str:
         inner = ", ".join(it.as_jmespath() or Kword.CURRENT for it in self.items)
@@ -328,8 +430,13 @@ class MultiList(Node):
 class MultiDict(Node):
     mapping: tuple[tuple[str, Node], ...]
 
-    def eval(self, value: Any) -> Any:
-        return {k: n.eval(value) for k, n in self.mapping}
+    def eval(self) -> Callable[[Any], Any]:
+        mapping_evals = tuple((k, n.eval()) for k, n in self.mapping)
+
+        def _eval(value: Any) -> Any:
+            return {k: n_eval(value) for k, n_eval in mapping_evals}
+
+        return _eval
 
     def as_jmespath(self) -> str:
         items = ", ".join(

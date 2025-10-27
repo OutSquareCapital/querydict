@@ -7,13 +7,15 @@ from typing import Any, Self
 
 from . import _nodes as nd
 from ._checks import eq, ne
-from ._core import BinaryNode, BinaryOp, Comparator, EqBase, Kword
+from ._core import BinaryNode, BinaryOp, Comparator, EqBase, Kword, Node
 
 type KeyOp = Callable[[Query], Query]
 
 
 def into_expr(obj: Any) -> nd.Node:
     match obj:
+        case Node():
+            return obj
         case Query():
             return obj.node
         case str():
@@ -69,12 +71,20 @@ class Query:
         return self._new(node)
 
     def index(self, i: int) -> Self:
-        return self._new(nd.SubExpr((self.node, nd.Index(i))))
+        if isinstance(self.node, nd.SubExpr):
+            node = nd.SubExpr(self.node.parts + (nd.Index(i),))
+        else:
+            node = nd.SubExpr((self.node, nd.Index(i)))
+        return self._new(node)
 
     def slice(
         self, start: int | None = None, end: int | None = None, step: int | None = None
     ) -> Self:
-        return self._new(nd.SubExpr((self.node, nd.Slice(start, end, step))))
+        if isinstance(self.node, nd.SubExpr):
+            node = nd.SubExpr(self.node.parts + (nd.Slice(start, end, step),))
+        else:
+            node = nd.SubExpr((self.node, nd.Slice(start, end, step)))
+        return self._new(node)
 
     def project(self, rhs: Any) -> Self:
         return self._new(nd.ArrayProject(self.node, into_expr(rhs)))
@@ -155,7 +165,8 @@ class Query:
         return self._new(nd.Pipe(self.node, rhs.node))
 
     def search(self, data: Any) -> Any:
-        return self.node.eval(data)
+        eval_func = self.node.eval()
+        return eval_func(data)
 
 
 def identity() -> Query:

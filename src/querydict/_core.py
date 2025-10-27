@@ -54,8 +54,8 @@ class Node(ABC):
         return f"{self.__class__.__name__}({self.as_jmespath() or Kword.CURRENT})"
 
     @abstractmethod
-    def eval(self, value: Any) -> Any:
-        """Evaluate the node against the given value."""
+    def eval(self) -> Callable[[Any], Any]:
+        """Return a callable that evaluates the node against the given value."""
         raise NotImplementedError
 
     @abstractmethod
@@ -74,11 +74,17 @@ class ProjectionBase(Node):
     def _iter(self, value: Any) -> list[Any] | None:
         raise NotImplementedError
 
-    def eval(self, value: Any) -> list[Any] | None:
-        seq = self._iter(self.base.eval(value))
-        if seq is None:
-            return None
-        return [self.rhs.eval(el) for el in seq if el is not None]
+    def eval(self) -> Callable[[Any], list[Any] | None]:
+        base_eval = self.base.eval()
+        rhs_eval = self.rhs.eval()
+
+        def _eval(value: Any) -> list[Any] | None:
+            seq = self._iter(base_eval(value))
+            if seq is None:
+                return None
+            return [rhs_eval(el) for el in seq if el is not None]
+
+        return _eval
 
     def as_jmespath(self) -> str:
         return f"{self.base.as_jmespath()}{self.SEP}{ensure_leading_dot(self.rhs.as_jmespath())}"
@@ -110,25 +116,45 @@ class BinaryOp(BinaryNode):
 
 @dataclass(slots=True, repr=False)
 class EqBase(BinaryOp):
-    def eval(self, value: Any) -> bool:
-        return self.OP(self.left.eval(value), self.right.eval(value))
+    def eval(self) -> Callable[[Any], bool]:
+        left_eval = self.left.eval()
+        right_eval = self.right.eval()
+        op = self.OP
+
+        def _eval(value: Any) -> bool:
+            return op(left_eval(value), right_eval(value))
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
 class Comparator(BinaryOp):
-    def eval(self, value: Any) -> bool | None:
-        left = self.left.eval(value)
-        right = self.right.eval(value)
-        if not (is_comparable(left) and is_comparable(right)):
-            return None
-        return self.OP(left, right)
+    def eval(self) -> Callable[[Any], bool | None]:
+        left_eval = self.left.eval()
+        right_eval = self.right.eval()
+        op = self.OP
+
+        def _eval(value: Any) -> bool | None:
+            left = left_eval(value)
+            right = right_eval(value)
+            if not (is_comparable(left) and is_comparable(right)):
+                return None
+            return op(left, right)
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
 class AssociativeNode(BinaryNode):
-    def eval(self, value: Any) -> Any:
-        left = self.left.eval(value)
-        return left if not_empty(left) else self.right.eval(value)
+    def eval(self) -> Callable[[Any], Any]:
+        left_eval = self.left.eval()
+        right_eval = self.right.eval()
+
+        def _eval(value: Any) -> Any:
+            left_val = left_eval(value)
+            return left_val if not_empty(left_val) else right_eval(value)
+
+        return _eval
 
 
 @dataclass(slots=True, repr=False)
@@ -152,8 +178,11 @@ class Converter(CallableNode):
 
 @dataclass(slots=True, repr=False)
 class Identity(Node):
-    def eval(self, value: Any) -> Any:
-        return value
+    def eval(self) -> Callable[[Any], Any]:
+        def _eval(value: Any) -> Any:
+            return value
+
+        return _eval
 
     def as_jmespath(self) -> str:
         return ""
@@ -165,16 +194,23 @@ class KeyNode(Node):
     key_of: Callable[[Identity], Node]
     key_name: str
 
-    def _key(self, el: Any) -> Any:
-        return self.key_of(Identity()).eval(el)
+    def _key_func(self) -> Callable[[Any], Any]:
+        key_eval = self.key_of(Identity()).eval()
+        return lambda el: key_eval(el)
 
-    def _eval_impl(self, arr: list[Any]) -> Any: ...
+    def _eval_impl(self, arr: list[Any], key_fn: Callable[[Any], Any]) -> Any: ...
 
-    def eval(self, value: Any) -> Any:
-        arr = self.base.eval(value)
-        if not is_list(arr) or not arr:
-            return arr if is_list(arr) else None
-        return self._eval_impl(arr)
+    def eval(self) -> Callable[[Any], Any]:
+        base_eval = self.base.eval()
+        key_fn = self._key_func()
+
+        def _eval(value: Any) -> Any:
+            arr = base_eval(value)
+            if not is_list(arr) or not arr:
+                return arr if is_list(arr) else None
+            return self._eval_impl(arr, key_fn)
+
+        return _eval
 
     def as_jmespath(self) -> str:
         return f"{self.key_name}({self.base.as_jmespath()}, {as_ref(self.key_of(Identity()))})"
