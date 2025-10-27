@@ -76,7 +76,7 @@ class Slice(Node):
     end: int | None
     step: int | None
 
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> list[Any] | None:
         if not is_list(value):
             return None
         return value[slice(self.start, self.end, self.step)]
@@ -127,7 +127,7 @@ class _ProjectionBase(Node):
     def _iter(self, value: Any) -> list[Any] | None:
         raise NotImplementedError
 
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> list[Any] | None:
         seq = self._iter(self.base.eval(value))
         if seq is None:
             return None
@@ -159,7 +159,7 @@ class FilterProjection(Node):
     then: Node
     cond: Node
 
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> list[Any] | None:
         seq = self.base.eval(value)
         if not is_list(seq):
             return None
@@ -214,7 +214,7 @@ class _EqBase(_BinaryCompare):
 class Eq(_EqBase):
     SYMBOL: str = "=="
 
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> bool:
         return self._equals(value)
 
 
@@ -222,7 +222,7 @@ class Eq(_EqBase):
 class Ne(_EqBase):
     SYMBOL: str = "!="
 
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> bool:
         return not self._equals(value)
 
 
@@ -230,7 +230,7 @@ class Ne(_EqBase):
 class _OrderBase(_BinaryCompare):
     OP: Callable[[Any, Any], bool] = operator.lt
 
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> bool | None:
         left = self.left.eval(value)
         right = self.right.eval(value)
         if not (is_comparable(left) and is_comparable(right)):
@@ -292,7 +292,7 @@ class Or(Node):
 class Not(Node):
     expr: Node
 
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> bool:
         v = self.expr.eval(value)
         if is_number(v) and v == 0:
             return False
@@ -316,7 +316,7 @@ class CallableNode(Node):
 
 @dataclass(slots=True, repr=False)
 class Length(CallableNode):
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> int | None:
         x = self.inner.eval(value)
         if is_sized(x):
             return len(x)
@@ -325,7 +325,7 @@ class Length(CallableNode):
 
 @dataclass(slots=True, repr=False)
 class Sort(CallableNode):
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> list[Any] | None:
         xs = self.inner.eval(value)
         if is_list(xs):
             try:
@@ -337,14 +337,14 @@ class Sort(CallableNode):
 
 @dataclass(slots=True, repr=False)
 class Keys(CallableNode):
-    def eval(self, value: Mapping[Any, Any] | Any) -> Any:
+    def eval(self, value: Mapping[Any, Any] | Any) -> list[Any] | None:
         x = self.inner.eval(value)
         return list(x.keys()) if is_mapping(x) else None
 
 
 @dataclass(slots=True, repr=False)
 class Values(CallableNode):
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> list[Any] | None:
         x = self.inner.eval(value)
         return list(x.values()) if is_mapping(x) else None
 
@@ -358,7 +358,7 @@ class Converter(CallableNode):
 
 @dataclass(slots=True, repr=False)
 class Array(Converter):
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> list[Any]:
         x = self.inner.eval(value)
         return x if is_list(x) else [x]
 
@@ -378,7 +378,7 @@ class String(Converter):
 
 @dataclass(slots=True, repr=False)
 class Number(Converter):
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> int | float | None:
         x = self.inner.eval(value)
         if isinstance(x, (list, dict, bool)) or x is None:
             return None
@@ -398,7 +398,7 @@ class MapApply(Node):
     base: Node
     build: Callable[[Identity], Node]
 
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> list[Any] | None:
         arr = self.base.eval(value)
         if not is_list(arr):
             return None
@@ -414,7 +414,7 @@ class SortBy(Node):
     base: Node
     key_of: Callable[[Identity], Node]
 
-    def eval(self, value: Any) -> Any:
+    def eval(self, value: Any) -> list[Any] | None:
         arr = self.base.eval(value)
         if not is_list(arr) or not arr:
             return arr if is_list(arr) else None
