@@ -52,14 +52,14 @@ def generate_data(n: int) -> JsonData:
 BENCHMARKS: list[BenchmarkCase] = [
     BenchmarkCase(
         name="Projection simple (names)",
-        qd_query=qd.field("users").project(qd.field("name")),
+        qd_query=qd.field("users").project("name"),
         jp_expr="users[*].name",
     ),
     BenchmarkCase(
         name="Filtre complexe (active & >30)",
         qd_query=qd.field("users").filter(
             qd.field("age").gt(30).and_(qd.field("active").eq(True)),
-            then=qd.field("name"),
+            then="name",
         ),
         jp_expr="users[?age > `30` && active == `true`].name",
     ),

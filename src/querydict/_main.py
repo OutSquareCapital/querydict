@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Self
 
 from . import _nodes as nd
-from ._core import CURRENT
+from ._core import CURRENT, BinaryNode
 
 type KeyOp = Callable[[Query], Query]
 
@@ -14,6 +14,8 @@ def into_expr(obj: Any) -> nd.Node:
     match obj:
         case Query():
             return obj.node
+        case str():
+            return field(obj).node
         case _:
             return nd.LiteralExpr(obj)
 
@@ -24,6 +26,24 @@ class Query:
 
     def _new(self, node: nd.Node) -> Self:
         return self.__class__(node)
+
+    def _new_binary(
+        self, op: Callable[[nd.Node, nd.Node], BinaryNode], right: Any
+    ) -> Self:
+        return self._new(op(self.node, into_expr(right)))
+
+    def _new_unary(self, op: Callable[[nd.Node], nd.Node]) -> Self:
+        return self._new(op(self.node))
+
+    def _new_key(
+        self,
+        node: Callable[[nd.Node, Callable[[nd.Identity], nd.Node]], nd.KeyNode],
+        key: KeyOp,
+    ) -> Self:
+        def _b(_: nd.Identity) -> nd.Node:
+            return key(identity()).node
+
+        return self._new(node(self.node, _b))
 
     def to_jmespath(self) -> str:
         return self.node.as_jmespath()
@@ -41,13 +61,6 @@ class Query:
             node = nd.SubExpr((self.node, nd.Field(name)))
         return self._new(node)
 
-    def dot(self, rhs: Self) -> Self:
-        if isinstance(self.node, nd.SubExpr):
-            node = nd.SubExpr(self.node.parts + (rhs.node,))
-        else:
-            node = nd.SubExpr((self.node, rhs.node))
-        return self._new(node)
-
     def index(self, i: int) -> Self:
         return self._new(nd.SubExpr((self.node, nd.Index(i))))
 
@@ -56,67 +69,65 @@ class Query:
     ) -> Self:
         return self._new(nd.SubExpr((self.node, nd.Slice(start, end, step))))
 
-    def project(self, rhs: Self) -> Self:
-        return self._new(nd.Projection(self.node, rhs.node))
+    def project(self, rhs: Any) -> Self:
+        return self._new(nd.Projection(self.node, into_expr(rhs)))
 
-    def vproject(self, rhs: Self) -> Self:
-        return self._new(nd.ValueProjection(self.node, rhs.node))
+    def vproject(self, rhs: Any) -> Self:
+        return self._new(nd.ValueProjection(self.node, into_expr(rhs)))
 
     def flatten(self) -> Self:
-        return self._new(nd.Flatten(self.node))
+        return self._new_unary(nd.Flatten)
 
-    def filter(self, cond: Self, then: Self | None = None) -> Self:
-        return self._new(
-            nd.FilterProjection(self.node, (then or identity()).node, cond.node)
-        )
+    def filter(self, cond: Self, then: Any) -> Self:
+        return self._new(nd.FilterProjection(self.node, into_expr(then), cond.node))
 
     def eq(self, other: Any) -> Self:
-        return self._new(nd.Eq(self.node, into_expr(other)))
+        return self._new_binary(nd.Eq, other)
 
     def ne(self, other: Any) -> Self:
-        return self._new(nd.Ne(self.node, into_expr(other)))
+        return self._new_binary(nd.Ne, other)
 
     def lt(self, other: Any) -> Self:
-        return self._new(nd.Lt(self.node, into_expr(other)))
+        return self._new_binary(nd.Lt, other)
 
     def lte(self, other: Any) -> Self:
-        return self._new(nd.Lte(self.node, into_expr(other)))
+        return self._new_binary(nd.Lte, other)
 
     def gt(self, other: Any) -> Self:
-        return self._new(nd.Gt(self.node, into_expr(other)))
+        return self._new_binary(nd.Gt, other)
 
     def gte(self, other: Any) -> Self:
-        return self._new(nd.Gte(self.node, into_expr(other)))
+        return self._new_binary(nd.Gte, other)
 
     def and_(self, other: Any) -> Self:
-        return self._new(nd.And(self.node, into_expr(other)))
+        return self._new_binary(nd.And, other)
 
     def or_(self, other: Any) -> Self:
-        return self._new(nd.Or(self.node, into_expr(other)))
+        return self._new_binary(nd.Or, other)
 
     def not_(self) -> Self:
-        return self._new(nd.Not(self.node))
+        return self._new_unary(nd.Not)
 
     def length(self) -> Self:
-        return self._new(nd.Length(self.node))
+        return self._new_unary(nd.Length)
 
     def sort(self) -> Self:
-        return self._new(nd.Sort(self.node))
+        return self._new_unary(nd.Sort)
 
     def keys(self) -> Self:
-        return self._new(nd.Keys(self.node))
+        return self._new_unary(nd.Keys)
 
     def values(self) -> Self:
-        return self._new(nd.Values(self.node))
+        return self._new_unary(nd.Values)
 
     def to_array(self) -> Self:
-        return self._new(nd.Array(self.node))
+        return self._new_unary(nd.Array)
 
     def to_string(self) -> Self:
-        return self._new(nd.String(self.node))
+        return self._new_unary(nd.String)
 
     def to_number(self) -> Self:
-        return self._new(nd.Number(self.node))
+        return self._new_unary(nd.Number)
 
     def map_with(self, build: KeyOp) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
@@ -125,22 +136,13 @@ class Query:
         return self._new(nd.MapApply(self.node, _b))
 
     def sort_by(self, key: KeyOp) -> Self:
-        def _b(_: nd.Identity) -> nd.Node:
-            return key(identity()).node
-
-        return self._new(nd.SortBy(self.node, _b))
+        return self._new_key(nd.SortBy, key)
 
     def min_by(self, key: KeyOp) -> Self:
-        def _b(_: nd.Identity) -> nd.Node:
-            return key(identity()).node
-
-        return self._new(nd.MinBy(self.node, _b))
+        return self._new_key(nd.MinBy, key)
 
     def max_by(self, key: KeyOp) -> Self:
-        def _b(_: nd.Identity) -> nd.Node:
-            return key(identity()).node
-
-        return self._new(nd.MaxBy(self.node, _b))
+        return self._new_key(nd.MaxBy, key)
 
     def pipe(self, rhs: Self) -> Self:
         return self._new(nd.Pipe(self.node, rhs.node))

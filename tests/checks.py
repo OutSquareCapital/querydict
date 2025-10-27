@@ -64,7 +64,7 @@ CASES: list[Case] = [
     ),
     Case(
         name="projection",
-        build=lambda: qd.field("foo").bar.project(qd.field("baz")),
+        build=lambda: qd.field("foo").bar.project("baz"),
         data=DATA_MIXED,
     ),
     Case(
@@ -77,7 +77,7 @@ CASES: list[Case] = [
         build=lambda: (
             qd.field("users").filter(
                 qd.field("age").gte(18),
-                then=qd.field("name"),
+                then="name",
             )
         ),
         data=DATA_USER,
@@ -111,7 +111,7 @@ CASES: list[Case] = [
     Case(
         name="map_with-length",
         build=lambda: (
-            qd.field("users").project(qd.field("name")).map_with(lambda e: e.length())
+            qd.field("users").project("name").map_with(lambda e: e.length())
         ),
         data=DATA_USER,
     ),

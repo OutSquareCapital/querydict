@@ -210,12 +210,12 @@ class Gte(OrderBase):
 
 @dataclass(slots=True, repr=False)
 class And(AssociativeNode):
-    OP: str = "&&"
+    SYMBOL: str = "&&"
 
 
 @dataclass(slots=True, repr=False)
 class Or(AssociativeNode):
-    OP: str = "||"
+    SYMBOL: str = "||"
 
 
 @dataclass(slots=True, repr=False)

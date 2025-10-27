@@ -70,7 +70,7 @@ class ProjectionBase(Node):
 
 
 @dataclass(slots=True, repr=False)
-class BinaryCompare(Node):
+class BinaryNode(Node):
     left: Node
     right: Node
     SYMBOL: str
@@ -80,13 +80,13 @@ class BinaryCompare(Node):
 
 
 @dataclass(slots=True, repr=False)
-class EqBase(BinaryCompare):
+class EqBase(BinaryNode):
     def _equals(self, value: Any) -> bool:
         return equals(self.left.eval(value), self.right.eval(value))
 
 
 @dataclass(slots=True, repr=False)
-class OrderBase(BinaryCompare):
+class OrderBase(BinaryNode):
     OP: Callable[[Any, Any], bool] = operator.lt
 
     def eval(self, value: Any) -> bool | None:
@@ -98,17 +98,10 @@ class OrderBase(BinaryCompare):
 
 
 @dataclass(slots=True, repr=False)
-class AssociativeNode(Node):
-    left: Node
-    right: Node
-    OP: str
-
+class AssociativeNode(BinaryNode):
     def eval(self, value: Any) -> Any:
         left = self.left.eval(value)
         return left if falsy(left) else self.right.eval(value)
-
-    def as_jmespath(self) -> str:
-        return f"{self.left.as_jmespath()} {self.OP} {self.right.as_jmespath()}"
 
 
 @dataclass(slots=True, repr=False)
