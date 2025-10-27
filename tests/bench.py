@@ -21,14 +21,12 @@ class BenchmarkResult(TypedDict):
     case_name: str
     qrydict: float
     jmespth: float
-    jmwapth_compiled: float
 
 
 @dataclass(slots=True, frozen=True)
 class BenchmarkCase:
     name: str
     qd_query: qd.Query
-    jp_expr: str
 
 
 def rand_str(k: int) -> str:
@@ -51,22 +49,16 @@ def generate_data(n: int) -> JsonData:
 
 BENCHMARKS: list[BenchmarkCase] = [
     BenchmarkCase(
-        name="Projection simple (names)",
-        qd_query=qd.field("users").project("name"),
-        jp_expr="users[*].name",
+        name="Projection simple (names)", qd_query=qd.field("users").project("name")
     ),
     BenchmarkCase(
         name="Filtre complexe (active & >30)",
         qd_query=qd.field("users").filter(
-            qd.field("age").gt(30).and_(qd.field("active").eq(True)),
-            then="name",
+            qd.field("age").gt(30).and_(qd.field("active").eq(True)), then="name"
         ),
-        jp_expr="users[?age > `30` && active == `true`].name",
     ),
     BenchmarkCase(
-        name="Tri (sort_by age)",
-        qd_query=qd.field("users").sort_by(lambda e: e.age),
-        jp_expr="sort_by(users, &age)",
+        name="Tri (sort_by age)", qd_query=qd.field("users").sort_by(lambda e: e.age)
     ),
 ]
 
@@ -97,28 +89,14 @@ def format_results(results: list[BenchmarkResult]) -> pl.DataFrame:
 def add_case(
     case: BenchmarkCase, size: int, runs: int, data: JsonData
 ) -> BenchmarkResult:
-    try:
-        assert case.qd_query.to_jmespath() == case.jp_expr
-    except AssertionError:
-        raise ValueError(
-            f"JMESPath mismatch for case '{case.name}': \n"
-            f"{case.qd_query.to_jmespath()!r} != \n{case.jp_expr!r}"
-        )
-
     jp_expr = case.qd_query.to_jmespath()
     jp_compiled = jmespath.compile(jp_expr)
+    assert jp_compiled.search(data) == case.qd_query.search(data)
 
     t_qd = time_query(case.qd_query.search, data, runs)
     t_jp_c = time_query(jp_compiled.search, data, runs)
-    t_jp_e = time_query(lambda d: jmespath.search(jp_expr, d), data, runs)
 
-    return BenchmarkResult(
-        size=size,
-        case_name=case.name,
-        qrydict=t_qd,
-        jmespth=t_jp_c,
-        jmwapth_compiled=t_jp_e,
-    )
+    return BenchmarkResult(size=size, case_name=case.name, qrydict=t_qd, jmespth=t_jp_c)
 
 
 def main(runs: int) -> pl.DataFrame:
