@@ -263,29 +263,27 @@ class Gte(_OrderBase):
 
 
 @dataclass(slots=True, repr=False)
-class And(Node):
+class AssociativeNode(Node):
     left: Node
     right: Node
+    OP: str
 
     def eval(self, value: Any) -> Any:
         left = self.left.eval(value)
         return left if falsy(left) else self.right.eval(value)
 
     def as_jmespath(self) -> str:
-        return f"{self.left.as_jmespath()} && {self.right.as_jmespath()}"
+        return f"{self.left.as_jmespath()} {self.OP} {self.right.as_jmespath()}"
 
 
 @dataclass(slots=True, repr=False)
-class Or(Node):
-    left: Node
-    right: Node
+class And(AssociativeNode):
+    OP: str = "&&"
 
-    def eval(self, value: Any) -> Any:
-        left = self.left.eval(value)
-        return self.right.eval(value) if falsy(left) else left
 
-    def as_jmespath(self) -> str:
-        return f"{self.left.as_jmespath()} || {self.right.as_jmespath()}"
+@dataclass(slots=True, repr=False)
+class Or(AssociativeNode):
+    OP: str = "||"
 
 
 @dataclass(slots=True, repr=False)
