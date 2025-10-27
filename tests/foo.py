@@ -19,10 +19,10 @@ class Case:
 
 def check(c: Case) -> None:
     q = c.build()
-    expr = q.node.as_jmespath()
+    expr = q.to_jmespath()
     got = q.search(c.data)
     want = jmespath.search(expr, c.data)
-    assert got == want, f"{c.name}: {got=!r} != {want=!r}  (expr={expr!r})"
+    assert got == want, f"{c.name}: \n{got=!r} != \n{want=!r}  \nexpr={expr!r}"
     print(f"✔ {c.name}  [{expr}]")
 
 

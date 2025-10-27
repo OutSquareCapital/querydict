@@ -58,11 +58,10 @@ BENCHMARKS: list[BenchmarkCase] = [
     ),
     BenchmarkCase(
         name="Filtre complexe (active & >30)",
-        qd_query=qd.identity()
-        .users.filter(
+        qd_query=qd.identity().users.filter(
             qd.identity().age.gt(30).and_(qd.identity().active.eq(True)),
-        )
-        .name,
+            then=qd.identity().name,
+        ),
         jp_expr="users[?age > `30` && active == `true`].name",
     ),
     BenchmarkCase(
@@ -88,8 +87,16 @@ def main(runs: int) -> pl.DataFrame:
         data = generate_data(size)
 
         for case in BENCHMARKS:
-            jp_compiled = jmespath.compile(case.jp_expr)
-            jp_expr = case.jp_expr
+            try:
+                assert case.qd_query.to_jmespath() == case.jp_expr
+            except AssertionError:
+                raise ValueError(
+                    f"JMESPath mismatch for case '{case.name}': \n"
+                    f"{case.qd_query.to_jmespath()!r} != \n{case.jp_expr!r}"
+                )
+
+            jp_expr = case.qd_query.to_jmespath()
+            jp_compiled = jmespath.compile(jp_expr)
 
             t_qd = time_query(case.qd_query.search, data, runs)
             t_jp_c = time_query(jp_compiled.search, data, runs)

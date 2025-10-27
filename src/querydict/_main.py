@@ -25,6 +25,9 @@ class Query:
     def _new(self, node: nd.Node) -> Self:
         return self.__class__(node)
 
+    def to_jmespath(self) -> str:
+        return self.node.as_jmespath()
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.node.as_jmespath() or IDENTITY})"
 

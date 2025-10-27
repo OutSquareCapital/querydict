@@ -1,22 +1,23 @@
 from __future__ import annotations
 
 import operator
-from abc import abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ._checks import (
-    equals,
-    falsy,
-    is_comparable,
-    is_list,
-    is_mapping,
-    is_number,
-    is_sized,
-    truthy,
+from ._checks import is_list, is_mapping, is_number, is_sized, truthy
+from ._core import (
+    IDENTITY,
+    AssociativeNode,
+    CallableNode,
+    Converter,
+    EqBase,
+    Node,
+    OrderBase,
+    ProjectionBase,
+    as_ref,
+    ensure_leading_dot,
 )
-from ._core import Node, as_callable, as_expref, ensure_leading_dot
 
 
 @dataclass(slots=True, repr=False)
@@ -118,27 +119,7 @@ class Pipe(Node):
 
 
 @dataclass(slots=True, repr=False)
-class _ProjectionBase(Node):
-    base: Node
-    rhs: Node
-    SEP: str
-
-    @abstractmethod
-    def _iter(self, value: Any) -> list[Any] | None:
-        raise NotImplementedError
-
-    def eval(self, value: Any) -> list[Any] | None:
-        seq = self._iter(self.base.eval(value))
-        if seq is None:
-            return None
-        return [self.rhs.eval(el) for el in seq if el is not None]
-
-    def as_jmespath(self) -> str:
-        return f"{self.base.as_jmespath()}{self.SEP}{ensure_leading_dot(self.rhs.as_jmespath())}"
-
-
-@dataclass(slots=True, repr=False)
-class Projection(_ProjectionBase):
+class Projection(ProjectionBase):
     SEP: str = "[*]"
 
     def _iter(self, value: Any) -> list[Any] | None:
@@ -146,7 +127,7 @@ class Projection(_ProjectionBase):
 
 
 @dataclass(slots=True, repr=False)
-class ValueProjection(_ProjectionBase):
+class ValueProjection(ProjectionBase):
     SEP: str = "*"
 
     def _iter(self, value: Any) -> list[Any] | None:
@@ -195,23 +176,7 @@ class Flatten(Node):
 
 
 @dataclass(slots=True, repr=False)
-class _BinaryCompare(Node):
-    left: Node
-    right: Node
-    SYMBOL: str
-
-    def as_jmespath(self) -> str:
-        return f"{self.left.as_jmespath()} {self.SYMBOL} {self.right.as_jmespath()}"
-
-
-@dataclass(slots=True, repr=False)
-class _EqBase(_BinaryCompare):
-    def _equals(self, value: Any) -> bool:
-        return equals(self.left.eval(value), self.right.eval(value))
-
-
-@dataclass(slots=True, repr=False)
-class Eq(_EqBase):
+class Eq(EqBase):
     SYMBOL: str = "=="
 
     def eval(self, value: Any) -> bool:
@@ -219,7 +184,7 @@ class Eq(_EqBase):
 
 
 @dataclass(slots=True, repr=False)
-class Ne(_EqBase):
+class Ne(EqBase):
     SYMBOL: str = "!="
 
     def eval(self, value: Any) -> bool:
@@ -227,53 +192,27 @@ class Ne(_EqBase):
 
 
 @dataclass(slots=True, repr=False)
-class _OrderBase(_BinaryCompare):
-    OP: Callable[[Any, Any], bool] = operator.lt
-
-    def eval(self, value: Any) -> bool | None:
-        left = self.left.eval(value)
-        right = self.right.eval(value)
-        if not (is_comparable(left) and is_comparable(right)):
-            return None
-        return self.OP(left, right)
-
-
-@dataclass(slots=True, repr=False)
-class Lt(_OrderBase):
+class Lt(OrderBase):
     SYMBOL: str = "<"
     OP: Callable[[Any, Any], bool] = operator.lt
 
 
 @dataclass(slots=True, repr=False)
-class Lte(_OrderBase):
+class Lte(OrderBase):
     SYMBOL: str = "<="
     OP: Callable[[Any, Any], bool] = operator.le
 
 
 @dataclass(slots=True, repr=False)
-class Gt(_OrderBase):
+class Gt(OrderBase):
     SYMBOL: str = ">"
     OP: Callable[[Any, Any], bool] = operator.gt
 
 
 @dataclass(slots=True, repr=False)
-class Gte(_OrderBase):
+class Gte(OrderBase):
     SYMBOL: str = ">="
     OP: Callable[[Any, Any], bool] = operator.ge
-
-
-@dataclass(slots=True, repr=False)
-class AssociativeNode(Node):
-    left: Node
-    right: Node
-    OP: str
-
-    def eval(self, value: Any) -> Any:
-        left = self.left.eval(value)
-        return left if falsy(left) else self.right.eval(value)
-
-    def as_jmespath(self) -> str:
-        return f"{self.left.as_jmespath()} {self.OP} {self.right.as_jmespath()}"
 
 
 @dataclass(slots=True, repr=False)
@@ -298,18 +237,6 @@ class Not(Node):
 
     def as_jmespath(self) -> str:
         return f"!{self.expr.as_jmespath()}"
-
-
-@dataclass(slots=True, repr=False)
-class CallableNode(Node):
-    inner: Node
-
-    @property
-    def func(self) -> str:
-        return self.__class__.__name__.lower()
-
-    def as_jmespath(self) -> str:
-        return as_callable(self.func, self.inner)
 
 
 @dataclass(slots=True, repr=False)
@@ -345,13 +272,6 @@ class Values(CallableNode):
     def eval(self, value: Any) -> list[Any] | None:
         x = self.inner.eval(value)
         return list(x.values()) if is_mapping(x) else None
-
-
-@dataclass(slots=True, repr=False)
-class Converter(CallableNode):
-    @property
-    def func(self) -> str:
-        return "to_" + self.__class__.__name__.lower()
 
 
 @dataclass(slots=True, repr=False)
@@ -403,7 +323,7 @@ class MapApply(Node):
         return [self.build(Identity()).eval(el) for el in arr]
 
     def as_jmespath(self) -> str:
-        fn = as_expref(self.build(Identity()))
+        fn = as_ref(self.build(Identity()))
         return f"map({fn}, {self.base.as_jmespath()})"
 
 
@@ -426,7 +346,7 @@ class SortBy(Node):
             return arr
 
     def as_jmespath(self) -> str:
-        key = as_expref(self.key_of(Identity()))
+        key = as_ref(self.key_of(Identity()))
         return f"sort_by({self.base.as_jmespath()}, {key})"
 
 
@@ -449,7 +369,7 @@ class MinBy(Node):
             return None
 
     def as_jmespath(self) -> str:
-        key = as_expref(self.key_of(Identity()))
+        key = as_ref(self.key_of(Identity()))
         return f"min_by({self.base.as_jmespath()}, {key})"
 
 
@@ -473,7 +393,7 @@ class MaxBy(Node):
             return None
 
     def as_jmespath(self) -> str:
-        key = as_expref(self.key_of(Identity()))
+        key = as_ref(self.key_of(Identity()))
         return f"max_by({self.base.as_jmespath()}, {key})"
 
 
@@ -485,7 +405,7 @@ class MultiList(Node):
         return [it.eval(value) for it in self.items]
 
     def as_jmespath(self) -> str:
-        inner = ", ".join(it.as_jmespath() or "@" for it in self.items)
+        inner = ", ".join(it.as_jmespath() or IDENTITY for it in self.items)
         return f"[{inner}]"
 
 
@@ -500,5 +420,7 @@ class MultiDict(Node):
         return d
 
     def as_jmespath(self) -> str:
-        items = ", ".join(f"{k}: {n.as_jmespath() or '@'}" for k, n in self.mapping)
+        items = ", ".join(
+            f"{k}: {n.as_jmespath() or IDENTITY}" for k, n in self.mapping
+        )
         return f"{{{items}}}"
