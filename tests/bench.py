@@ -1,4 +1,3 @@
-# Fichier: bench.py
 from __future__ import annotations
 
 import random
@@ -36,37 +35,37 @@ def rand_str(k: int) -> str:
     return "".join(random.choices(string.ascii_lowercase, k=k))
 
 
+def generate_user(i: int) -> dict[str, Any]:
+    return {
+        "id": i,
+        "name": rand_str(10),
+        "age": random.randint(18, 65),
+        "active": random.choice([True, False]),
+        "tags": [rand_str(5) for _ in range(random.randint(1, 5))],
+    }
+
+
 def generate_data(n: int) -> JsonData:
-    users: list[dict[str, Any]] = []
-    for i in range(n):
-        user = {
-            "id": i,
-            "name": rand_str(10),
-            "age": random.randint(18, 65),
-            "active": random.choice([True, False]),
-            "tags": [rand_str(5) for _ in range(random.randint(1, 5))],
-        }
-        users.append(user)
-    return {"users": users}
+    return {"users": [generate_user(i) for i in range(n)]}
 
 
 BENCHMARKS: list[BenchmarkCase] = [
     BenchmarkCase(
         name="Projection simple (names)",
-        qd_query=qd.identity().users.project(qd.identity().name),
+        qd_query=qd.field("users").project(qd.field("name")),
         jp_expr="users[*].name",
     ),
     BenchmarkCase(
         name="Filtre complexe (active & >30)",
-        qd_query=qd.identity().users.filter(
-            qd.identity().age.gt(30).and_(qd.identity().active.eq(True)),
-            then=qd.identity().name,
+        qd_query=qd.field("users").filter(
+            qd.field("age").gt(30).and_(qd.field("active").eq(True)),
+            then=qd.field("name"),
         ),
         jp_expr="users[?age > `30` && active == `true`].name",
     ),
     BenchmarkCase(
         name="Tri (sort_by age)",
-        qd_query=qd.identity().users.sort_by(lambda e: e.age),
+        qd_query=qd.field("users").sort_by(lambda e: e.age),
         jp_expr="sort_by(users, &age)",
     ),
 ]

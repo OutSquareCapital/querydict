@@ -153,6 +153,10 @@ def identity() -> Query:
     return Query(nd.Identity())
 
 
+def field(name: str) -> Query:
+    return Query(nd.Identity()).field(name)
+
+
 def lit(value: Any) -> Query:
     return Query(nd.LiteralExpr(value))
 
