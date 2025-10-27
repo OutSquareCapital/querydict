@@ -22,7 +22,7 @@ def check(c: Case) -> None:
     got = q.search(c.data)
     want = jmespath.search(expr, c.data)
     assert got == want, f"{c.name}: \n{got=!r} != \n{want=!r}  \nexpr={expr!r}"
-    print(f"✔ {c.name}  [{expr}]")
+    print(f"✔ {c.name}, \nexpr: \n  {expr}, \nresult: \n  {got!r}")
 
 
 DATA_USER: dict[str, Any] = {
