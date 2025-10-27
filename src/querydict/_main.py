@@ -54,6 +54,16 @@ class Query:
 
         return self._new(node(self.node, _b))
 
+    def _new_subexpr[**P](
+        self, factory: Callable[P, nd.Node], *args: P.args, **kwargs: P.kwargs
+    ) -> Self:
+        if isinstance(self.node, nd.SubExpr):
+            parts = self.node.parts + (factory(*args, **kwargs),)
+
+        else:
+            parts = (self.node, factory(*args, **kwargs))
+        return self._new(nd.SubExpr(parts))
+
     def to_jmespath(self) -> str:
         return self.node.as_jmespath()
 
@@ -64,27 +74,15 @@ class Query:
         return self.field(name)
 
     def field(self, name: str) -> Self:
-        if isinstance(self.node, nd.SubExpr):
-            node = nd.SubExpr(self.node.parts + (nd.Field(name),))
-        else:
-            node = nd.SubExpr((self.node, nd.Field(name)))
-        return self._new(node)
+        return self._new_subexpr(nd.Field, name)
 
     def index(self, i: int) -> Self:
-        if isinstance(self.node, nd.SubExpr):
-            node = nd.SubExpr(self.node.parts + (nd.Index(i),))
-        else:
-            node = nd.SubExpr((self.node, nd.Index(i)))
-        return self._new(node)
+        return self._new_subexpr(nd.Index, i)
 
     def slice(
         self, start: int | None = None, end: int | None = None, step: int | None = None
     ) -> Self:
-        if isinstance(self.node, nd.SubExpr):
-            node = nd.SubExpr(self.node.parts + (nd.Slice(start, end, step),))
-        else:
-            node = nd.SubExpr((self.node, nd.Slice(start, end, step)))
-        return self._new(node)
+        return self._new_subexpr(nd.Slice, start, end, step)
 
     def project(self, rhs: Any) -> Self:
         return self._new(nd.ArrayProject(self.node, into_expr(rhs)))

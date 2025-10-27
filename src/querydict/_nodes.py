@@ -221,7 +221,7 @@ class And(AssociativeNode):
 
 @dataclass(slots=True, repr=False)
 class Or(AssociativeNode):
-    pass  # eval inherited from AssociativeNode
+    pass
 
 
 @dataclass(slots=True, repr=False)
@@ -234,7 +234,6 @@ class Not(Node):
         def _eval(value: Any) -> bool:
             v = expr_eval(value)
             if is_number(v) and v == 0:
-                # Special case: JMESPath treats 0 as falsey
                 return True
             return not not_empty(v)
 
@@ -267,10 +266,8 @@ class Sort(CallableNode):
             xs = inner_eval(value)
             if is_list(xs):
                 try:
-                    # Attempt to sort; requires comparable elements
                     return sorted(xs)
                 except Exception:
-                    # JMESPath returns the original list if sorting fails
                     return xs
             return None
 
@@ -341,14 +338,11 @@ class Number(Converter):
             if isinstance(x, (int, float)):
                 return x
             try:
-                # Attempt int conversion first
                 return int(x)
             except Exception:
                 try:
-                    # Attempt float conversion
                     return float(x)
                 except Exception:
-                    # Conversion failed
                     return None
 
         return _eval
