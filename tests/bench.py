@@ -62,7 +62,7 @@ BENCHMARKS: list[BenchmarkCase] = [
     ),
 ]
 
-DATA_SIZES: list[int] = [100, 1_000, 10_000]
+DATA_SIZES: list[int] = [100, 500, 1000]
 
 
 def time_query(query_func: QueryFunc, data: JsonData, number: int) -> float:
@@ -112,4 +112,4 @@ def main(runs: int) -> pl.DataFrame:
 
 
 if __name__ == "__main__":
-    main(2).pipe(print)
+    main(200).pipe(print)
