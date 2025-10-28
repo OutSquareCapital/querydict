@@ -146,6 +146,11 @@ CASES: list[Case] = [
         build=lambda: qd.lit("42").to_number(),
         data=DATA_MIXED,
     ),
+    Case(
+        name="flatten-nested",
+        build=lambda: qd.field("nested").flatten(),
+        data=DATA_MIXED,
+    ),
 ]
 
 

@@ -68,7 +68,7 @@ class Node(ABC):
 class ProjectionBase(Node):
     base: Node
     rhs: Node
-    SEP: Kword
+    separator: Kword
     iter_func: Callable[[Any], list[Any] | None]
 
     def eval(self) -> Callable[[Any], list[Any] | None]:
@@ -77,14 +77,16 @@ class ProjectionBase(Node):
 
         def _eval(value: Any) -> list[Any] | None:
             seq = self.iter_func(base_eval(value))
-            if seq is None:
-                return None
-            return [rhs_eval(el) for el in seq if el is not None]
+            return (
+                [rhs_eval(el) for el in seq if el is not None]
+                if seq is not None
+                else None
+            )
 
         return _eval
 
     def as_jmespath(self) -> str:
-        return f"{self.base.as_jmespath()}{self.SEP}{ensure_leading_dot(self.rhs.as_jmespath())}"
+        return f"{self.base.as_jmespath()}{self.separator}{ensure_leading_dot(self.rhs.as_jmespath())}"
 
 
 @dataclass(slots=True, repr=False)
@@ -104,11 +106,11 @@ class BinaryNode(Node):
 
 @dataclass(slots=True, repr=False)
 class BinaryOp(BinaryNode):
-    OP: Callable[[Any, Any], bool]
+    op: Callable[[Any, Any], bool]
 
     @property
     def _kword(self) -> str:
-        return self.OP.__name__.upper()
+        return self.op.__name__.upper()
 
 
 @dataclass(slots=True, repr=False)
@@ -116,7 +118,7 @@ class EqBase(BinaryOp):
     def eval(self) -> Callable[[Any], bool]:
         left_eval = self.left.eval()
         right_eval = self.right.eval()
-        op = self.OP
+        op = self.op
 
         def _eval(value: Any) -> bool:
             return op(left_eval(value), right_eval(value))
@@ -129,14 +131,16 @@ class Comparator(BinaryOp):
     def eval(self) -> Callable[[Any], bool | None]:
         left_eval = self.left.eval()
         right_eval = self.right.eval()
-        op = self.OP
+        op = self.op
 
         def _eval(value: Any) -> bool | None:
             left = left_eval(value)
             right = right_eval(value)
-            if not (is_comparable(left) and is_comparable(right)):
-                return None
-            return op(left, right)
+            return (
+                op(left, right)
+                if (is_comparable(left) and is_comparable(right))
+                else None
+            )
 
         return _eval
 
@@ -200,9 +204,7 @@ class KeyNode(Node):
 
         def _eval(value: Any) -> Any:
             arr = base_eval(value)
-            if not is_list(arr) or not arr:
-                return arr if is_list(arr) else None
-            return self.func(arr, key_fn)
+            return self.func(arr, key_fn) if is_list(arr) else None
 
         return _eval
 

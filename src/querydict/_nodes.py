@@ -33,9 +33,7 @@ class Field(Node):
         name = self.name
 
         def _eval(value: Any) -> Any:
-            if is_mapping(value):
-                return value.get(name)
-            return None
+            return value.get(name, None) if is_mapping(value) else None
 
         return _eval
 
@@ -74,9 +72,7 @@ class Slice(Node):
         slc = slice(self.start, self.end, self.step)
 
         def _eval(value: Any) -> list[Any] | None:
-            if not is_list(value):
-                return None
-            return value[slc]
+            return value[slc] if is_list(value) else None
 
         return _eval
 
@@ -140,9 +136,11 @@ class FilterProjection(Node):
 
         def _eval(value: Any) -> list[Any] | None:
             seq = base_eval(value)
-            if not is_list(seq):
-                return None
-            return [then_eval(el) for el in seq if not_empty(cond_eval(el))]
+            return (
+                [then_eval(el) for el in seq if not_empty(cond_eval(el))]
+                if is_list(seq)
+                else None
+            )
 
         return _eval
 
@@ -227,9 +225,7 @@ class MapApply(Node):
 
         def _eval(value: Any) -> list[Any] | None:
             arr = base_eval(value)
-            if not is_list(arr):
-                return None
-            return [build_eval(el) for el in arr]
+            return [build_eval(el) for el in arr] if is_list(arr) else None
 
         return _eval
 
