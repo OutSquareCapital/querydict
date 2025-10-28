@@ -69,17 +69,14 @@ class ProjectionBase(Node):
     base: Node
     rhs: Node
     SEP: Kword
-
-    @abstractmethod
-    def _iter(self, value: Any) -> list[Any] | None:
-        raise NotImplementedError
+    iter_func: Callable[[Any], list[Any] | None]
 
     def eval(self) -> Callable[[Any], list[Any] | None]:
         base_eval = self.base.eval()
         rhs_eval = self.rhs.eval()
 
         def _eval(value: Any) -> list[Any] | None:
-            seq = self._iter(base_eval(value))
+            seq = self.iter_func(base_eval(value))
             if seq is None:
                 return None
             return [rhs_eval(el) for el in seq if el is not None]
@@ -160,20 +157,18 @@ class AssociativeNode(BinaryNode):
 @dataclass(slots=True, repr=False)
 class CallableNode(Node):
     inner: Node
+    func: Callable[[Any], Any]
 
-    @property
-    def func(self) -> str:
-        return self.__class__.__name__.lower()
+    def eval(self):
+        evaluator = self.inner.eval()
+
+        def _eval(value: Any) -> Any:
+            return self.func(evaluator(value))
+
+        return _eval
 
     def as_jmespath(self) -> str:
-        return f"{self.func}({self.inner.as_jmespath() or Kword.CURRENT})"
-
-
-@dataclass(slots=True, repr=False)
-class Converter(CallableNode):
-    @property
-    def func(self) -> str:
-        return "to_" + self.__class__.__name__.lower()
+        return f"{self.func.__name__}({self.inner.as_jmespath() or Kword.CURRENT})"
 
 
 @dataclass(slots=True, repr=False)
@@ -193,12 +188,11 @@ class KeyNode(Node):
     base: Node
     key_of: Callable[[Identity], Node]
     key_name: str
+    func: Callable[[list[Any], Any], Any]
 
     def _key_func(self) -> Callable[[Any], Any]:
         key_eval = self.key_of(Identity()).eval()
         return lambda el: key_eval(el)
-
-    def _eval_impl(self, arr: list[Any], key_fn: Callable[[Any], Any]) -> Any: ...
 
     def eval(self) -> Callable[[Any], Any]:
         base_eval = self.base.eval()
@@ -208,7 +202,7 @@ class KeyNode(Node):
             arr = base_eval(value)
             if not is_list(arr) or not arr:
                 return arr if is_list(arr) else None
-            return self._eval_impl(arr, key_fn)
+            return self.func(arr, key_fn)
 
         return _eval
 

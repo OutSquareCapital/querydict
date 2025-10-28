@@ -5,9 +5,20 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Self
 
+from . import _funcs as fn
 from . import _nodes as nd
 from ._checks import eq, ne
-from ._core import BinaryNode, BinaryOp, Comparator, EqBase, Kword, Node
+from ._core import (
+    BinaryNode,
+    BinaryOp,
+    CallableNode,
+    Comparator,
+    EqBase,
+    KeyNode,
+    Kword,
+    Node,
+    ProjectionBase,
+)
 
 type KeyOp = Callable[[Query], Query]
 
@@ -44,15 +55,30 @@ class Query:
     def _new_unary(self, op: Callable[[nd.Node], nd.Node]) -> Self:
         return self._new(op(self.node))
 
+    def _new_callable(self, func: Callable[[Any], Any]):
+        return self._new(CallableNode(self.node, func))
+
+    def _new_projection(
+        self,
+        rhs: Any,
+        func: Callable[[Any], list[Any] | None],
+    ) -> Self:
+        return self._new(
+            ProjectionBase(
+                self.node, into_expr(rhs), Kword[func.__name__.upper()], func
+            )
+        )
+
     def _new_key(
         self,
-        node: Callable[[nd.Node, Callable[[nd.Identity], nd.Node]], nd.KeyNode],
+        name: str,
+        func: Callable[[list[Any], Any], Any],
         key: KeyOp,
     ) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
             return key(identity()).node
 
-        return self._new(node(self.node, _b))
+        return self._new(KeyNode(self.node, _b, name, func))
 
     def _new_subexpr[**P](
         self, factory: Callable[P, nd.Node], *args: P.args, **kwargs: P.kwargs
@@ -85,10 +111,10 @@ class Query:
         return self._new_subexpr(nd.Slice, start, end, step)
 
     def project(self, rhs: Any) -> Self:
-        return self._new(nd.ArrayProject(self.node, into_expr(rhs)))
+        return self._new_projection(rhs, fn.array_project)
 
     def vproject(self, rhs: Any) -> Self:
-        return self._new(nd.ObjectProject(self.node, into_expr(rhs)))
+        return self._new_projection(rhs, fn.object_project)
 
     def flatten(self) -> Self:
         return self._new_unary(nd.Flatten)
@@ -124,25 +150,25 @@ class Query:
         return self._new_unary(nd.Not)
 
     def length(self) -> Self:
-        return self._new_unary(nd.Length)
+        return self._new_callable(fn.length)
 
     def sort(self) -> Self:
-        return self._new_unary(nd.Sort)
+        return self._new_callable(fn.sort)
 
     def keys(self) -> Self:
-        return self._new_unary(nd.Keys)
+        return self._new_callable(fn.keys)
 
     def values(self) -> Self:
-        return self._new_unary(nd.Values)
+        return self._new_callable(fn.values)
 
     def to_array(self) -> Self:
-        return self._new_unary(nd.Array)
+        return self._new_callable(fn.to_array)
 
     def to_string(self) -> Self:
-        return self._new_unary(nd.String)
+        return self._new_callable(fn.to_string)
 
     def to_number(self) -> Self:
-        return self._new_unary(nd.Number)
+        return self._new_callable(fn.to_number)
 
     def map_with(self, build: KeyOp) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
@@ -151,13 +177,13 @@ class Query:
         return self._new(nd.MapApply(self.node, _b))
 
     def sort_by(self, key: KeyOp) -> Self:
-        return self._new_key(nd.SortBy, key)
+        return self._new_key("sort_by", fn.sort_by, key)
 
     def min_by(self, key: KeyOp) -> Self:
-        return self._new_key(nd.MinBy, key)
+        return self._new_key("min_by", fn.min_by, key)
 
     def max_by(self, key: KeyOp) -> Self:
-        return self._new_key(nd.MaxBy, key)
+        return self._new_key("max_by", fn.max_by, key)
 
     def pipe(self, rhs: Self) -> Self:
         return self._new(nd.Pipe(self.node, rhs.node))

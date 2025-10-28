@@ -5,19 +5,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from ._checks import is_list, is_mapping, is_number, is_sized, not_empty
-from ._core import (
-    AssociativeNode,
-    CallableNode,
-    Converter,
-    Identity,
-    KeyNode,
-    Kword,
-    Node,
-    ProjectionBase,
-    as_ref,
-    ensure_leading_dot,
-)
+from ._checks import is_list, is_mapping, is_number, not_empty
+from ._core import AssociativeNode, Identity, Kword, Node, as_ref, ensure_leading_dot
 
 
 @dataclass(slots=True, repr=False)
@@ -139,22 +128,6 @@ class Pipe(Node):
 
 
 @dataclass(slots=True, repr=False)
-class ArrayProject(ProjectionBase):
-    SEP: Kword = Kword.ARRAY_PROJECT
-
-    def _iter(self, value: Any) -> list[Any] | None:
-        return value if is_list(value) else None
-
-
-@dataclass(slots=True, repr=False)
-class ObjectProject(ProjectionBase):
-    SEP: Kword = Kword.OBJECT_PROJECT
-
-    def _iter(self, value: Any) -> list[Any] | None:
-        return list(value.values()) if is_mapping(value) else None
-
-
-@dataclass(slots=True, repr=False)
 class FilterProjection(Node):
     base: Node
     then: Node
@@ -244,111 +217,6 @@ class Not(Node):
 
 
 @dataclass(slots=True, repr=False)
-class Length(CallableNode):
-    def eval(self) -> Callable[[Any], int | None]:
-        inner_eval = self.inner.eval()
-
-        def _eval(value: Any) -> int | None:
-            x = inner_eval(value)
-            if is_sized(x):
-                return len(x)
-            return None
-
-        return _eval
-
-
-@dataclass(slots=True, repr=False)
-class Sort(CallableNode):
-    def eval(self) -> Callable[[Any], list[Any] | None]:
-        inner_eval = self.inner.eval()
-
-        def _eval(value: Any) -> list[Any] | None:
-            xs = inner_eval(value)
-            if is_list(xs):
-                try:
-                    return sorted(xs)
-                except Exception:
-                    return xs
-            return None
-
-        return _eval
-
-
-@dataclass(slots=True, repr=False)
-class Keys(CallableNode):
-    def eval(self) -> Callable[[Any], list[Any] | None]:
-        inner_eval = self.inner.eval()
-
-        def _eval(value: Any) -> list[Any] | None:
-            x = inner_eval(value)
-            return list(x.keys()) if is_mapping(x) else None
-
-        return _eval
-
-
-@dataclass(slots=True, repr=False)
-class Values(CallableNode):
-    def eval(self) -> Callable[[Any], list[Any] | None]:
-        inner_eval = self.inner.eval()
-
-        def _eval(value: Any) -> list[Any] | None:
-            x = inner_eval(value)
-            return list(x.values()) if is_mapping(x) else None
-
-        return _eval
-
-
-@dataclass(slots=True, repr=False)
-class Array(Converter):
-    def eval(self) -> Callable[[Any], list[Any]]:
-        inner_eval = self.inner.eval()
-
-        def _eval(value: Any) -> list[Any]:
-            x = inner_eval(value)
-            return x if is_list(x) else [x]
-
-        return _eval
-
-
-@dataclass(slots=True, repr=False)
-class String(Converter):
-    def eval(self) -> Callable[[Any], Any]:
-        inner_eval = self.inner.eval()
-
-        def _eval(value: Any) -> Any:
-            x = inner_eval(value)
-            return (
-                x
-                if isinstance(x, str)
-                else _json.dumps(x, separators=(",", ":"), default=str)
-            )
-
-        return _eval
-
-
-@dataclass(slots=True, repr=False)
-class Number(Converter):
-    def eval(self) -> Callable[[Any], int | float | None]:
-        inner_eval = self.inner.eval()
-
-        def _eval(value: Any) -> int | float | None:
-            x = inner_eval(value)
-            if isinstance(x, (list, dict, bool)) or x is None:
-                return None
-            if isinstance(x, (int, float)):
-                return x
-            try:
-                return int(x)
-            except Exception:
-                try:
-                    return float(x)
-                except Exception:
-                    return None
-
-        return _eval
-
-
-@dataclass(slots=True, repr=False)
 class MapApply(Node):
     base: Node
     build: Callable[[Identity], Node]
@@ -368,39 +236,6 @@ class MapApply(Node):
     def as_jmespath(self) -> str:
         fn = as_ref(self.build(Identity()))
         return f"map({fn}, {self.base.as_jmespath()})"
-
-
-@dataclass(slots=True, repr=False)
-class SortBy(KeyNode):
-    key_name: str = "sort_by"
-
-    def _eval_impl(self, arr: list[Any], key_fn: Callable[[Any], Any]) -> list[Any]:
-        try:
-            return sorted(arr, key=key_fn)
-        except Exception:
-            return arr
-
-
-@dataclass(slots=True, repr=False)
-class MinBy(KeyNode):
-    key_name: str = "min_by"
-
-    def _eval_impl(self, arr: list[Any], key_fn: Callable[[Any], Any]) -> Any | None:
-        try:
-            return min(arr, key=key_fn)
-        except Exception:
-            return None
-
-
-@dataclass(slots=True, repr=False)
-class MaxBy(KeyNode):
-    key_name: str = "max_by"
-
-    def _eval_impl(self, arr: list[Any], key_fn: Callable[[Any], Any]) -> Any | None:
-        try:
-            return max(arr, key=key_fn)
-        except Exception:
-            return None
 
 
 @dataclass(slots=True, repr=False)
