@@ -1,22 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sized
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeIs
 
 if TYPE_CHECKING:
     from ._main import Query
 
 
-type EvalFunc = Callable[[Any], Any]
+type Node = Callable[[Any], Any]
 
 
-@dataclass(slots=True)
-class Node:
-    eval: EvalFunc
-
-
-type IntoExpr = Node | Query | str | int | float | bool | None
+type IntoExpr = Query | str | int | float | bool | None
 
 
 def is_sized(x: object) -> TypeIs[Sized]:

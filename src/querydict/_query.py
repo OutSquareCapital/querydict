@@ -112,4 +112,4 @@ class Query:
         return self._new(fc.pipe_op, rhs)
 
     def search(self, data: Any) -> Any:
-        return self.node.eval(data)
+        return self.node(data)
