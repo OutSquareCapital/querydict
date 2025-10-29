@@ -207,12 +207,9 @@ def filter_project(value: Any, then_eval: Node, cond_eval: Node) -> list[Any] | 
     )
 
 
-def sub_expr(part_evals: tuple[Node, ...]) -> Node:
+def sub_expr(current_node: Node, next_node: Node) -> Node:
     def _eval(value: Any) -> Any:
-        out = value
-        for p_eval in part_evals:
-            out = p_eval(out)
-        return out
+        return next_node(current_node(value))
 
     return _eval
 
