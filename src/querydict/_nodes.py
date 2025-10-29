@@ -8,7 +8,7 @@ from typing import Any
 import cytoolz as cz
 
 from . import _strategies as st
-from ._core import EvalFunc, IntoExpr, Kword
+from ._core import EvalFunc, IntoExpr
 
 
 class Node(ABC):
@@ -90,7 +90,6 @@ class NodeWithBase(Node):
 @dataclass(slots=True)
 class ProjectionBase(NodeWithBase):
     rhs: EvalFunc
-    separator: Kword
     iter_func: Callable[[Any], list[Any] | None]
 
     def eval(self) -> Callable[[Any], list[Any] | None]:
@@ -110,18 +109,10 @@ class FilterProjection(NodeWithBase):
 class BinaryNode(NodeWithBase):
     right: EvalFunc
 
-    @property
-    def _kword(self) -> str:
-        return self.__class__.__name__.upper()
-
 
 @dataclass(slots=True)
 class BinaryOp(BinaryNode):
     op: Callable[[Any, Any], bool]
-
-    @property
-    def _kword(self) -> str:
-        return self.op.__name__.upper()
 
 
 @dataclass(slots=True)
@@ -164,7 +155,6 @@ class CallableNode(NodeWithBase):
 @dataclass(slots=True)
 class KeyNode(NodeWithBase):
     key_of: Callable[[Identity], Node]
-    key_name: str
     func: Callable[[list[Any], Any], Any]
 
     def eval(self) -> EvalFunc:

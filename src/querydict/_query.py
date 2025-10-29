@@ -101,13 +101,13 @@ class Query:
         return self._new(fc.map_apply, build)
 
     def sort_by(self, key: Callable[[Query], Query]) -> Self:
-        return self._new(fc.key, "sort_by", st.sort_by, key)
+        return self._new(fc.key, st.sort_by, key)
 
     def min_by(self, key: Callable[[Query], Query]) -> Self:
-        return self._new(fc.key, "min_by", st.min_by, key)
+        return self._new(fc.key, st.min_by, key)
 
     def max_by(self, key: Callable[[Query], Query]) -> Self:
-        return self._new(fc.key, "max_by", st.max_by, key)
+        return self._new(fc.key, st.max_by, key)
 
     def pipe(self, rhs: Self) -> Self:
         return self._new(fc.pipe_op, rhs.node)

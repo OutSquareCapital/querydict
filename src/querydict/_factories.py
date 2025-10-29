@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from . import _nodes as nd
-from ._core import EvalFunc, IntoExpr, Kword
+from ._core import EvalFunc, IntoExpr
 
 if TYPE_CHECKING:
     from ._main import Query
@@ -87,9 +87,7 @@ def callable(node: nd.Node, func: EvalFunc) -> nd.CallableNode:
 def projection(
     node: nd.Node, rhs: IntoExpr, func: Callable[[Any], list[Any] | None]
 ) -> nd.ProjectionBase:
-    return nd.ProjectionBase(
-        node.eval(), into_expr(rhs).eval(), Kword[func.__name__.upper()], func
-    )
+    return nd.ProjectionBase(node.eval(), into_expr(rhs).eval(), func)
 
 
 def filter_project(base: nd.Node, then: IntoExpr, cond: nd.Node) -> nd.FilterProjection:
@@ -98,7 +96,6 @@ def filter_project(base: nd.Node, then: IntoExpr, cond: nd.Node) -> nd.FilterPro
 
 def key(
     node: nd.Node,
-    name: str,
     func: Callable[[list[Any], Any], Any],
     key: Callable[[Query], Query],
 ) -> nd.KeyNode:
@@ -107,7 +104,7 @@ def key(
     def _b(_: nd.Identity) -> nd.Node:
         return key(identity()).node
 
-    return nd.KeyNode(node.eval(), _b, name, func)
+    return nd.KeyNode(node.eval(), _b, func)
 
 
 def subexpr[**P](

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sized
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypeIs
 
 if TYPE_CHECKING:
@@ -11,37 +10,6 @@ if TYPE_CHECKING:
 type IntoExpr = Node | Query | str | int | float | bool | None
 
 type EvalFunc = Callable[[Any], Any]
-
-
-class Kword(StrEnum):
-    CURRENT = "@"
-    REF = "&"
-    DOT = "."
-    ARRAY_PROJECT = "[*]"
-    OBJECT_PROJECT = "*"
-    FLATTEN = "[]"
-    EQ = "=="
-    NE = "!="
-    LT = "<"
-    LE = "<="
-    GT = ">"
-    GE = ">="
-    AND = "&&"
-    OR = "||"
-    PIPE = "|"
-    SPACE = " "
-
-
-def _is_leading_dot(text: str) -> bool:
-    return text.startswith((Kword.DOT, "[", "{", "(", "`", Kword.CURRENT) or text == "")
-
-
-def ensure_leading_dot(text: str) -> str:
-    match text:
-        case text if _is_leading_dot(text):
-            return text
-        case _:
-            return Kword.DOT + text
 
 
 def is_sized(x: object) -> TypeIs[Sized]:
