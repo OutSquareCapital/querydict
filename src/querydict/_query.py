@@ -7,8 +7,7 @@ from typing import Any, Concatenate, Self
 
 from . import _factories as fc
 from . import _strategies as st
-from ._core import IntoExpr, eq, ne
-from ._nodes import Node
+from ._core import IntoExpr, Node, eq, ne
 
 
 @dataclass(slots=True)
@@ -47,7 +46,7 @@ class Query:
         return self._new(fc.flatten)
 
     def filter(self, cond: Self, then: IntoExpr) -> Self:
-        return self._new(fc.filter_project, then, cond.node)
+        return self._new(fc.filter_project, then, cond)
 
     def eq(self, other: IntoExpr) -> Self:
         return self._new(fc.equality, other, eq)
@@ -110,8 +109,7 @@ class Query:
         return self._new(fc.key, st.max_by, key)
 
     def pipe(self, rhs: Self) -> Self:
-        return self._new(fc.pipe_op, rhs.node)
+        return self._new(fc.pipe_op, rhs)
 
     def search(self, data: Any) -> Any:
-        eval_func = self.node.eval()
-        return eval_func(data)
+        return self.node.eval(data)
