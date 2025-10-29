@@ -8,8 +8,7 @@ from typing import Any, Concatenate, Self
 from . import _factories as fc
 from . import _nodes as nd
 from . import _strategies as st
-from ._checks import eq, ne
-from ._core import Comparator, EqBase, Kword
+from ._core import Kword, eq, ne
 
 
 @dataclass(slots=True, repr=False)
@@ -57,22 +56,22 @@ class Query:
         return self._new(nd.FilterProjection, fc.into_expr(then), cond.node)
 
     def eq(self, other: Any) -> Self:
-        return self._new(fc.binary_op, EqBase, other, eq)
+        return self._new(fc.binary_op, nd.EqBase, other, eq)
 
     def ne(self, other: Any) -> Self:
-        return self._new(fc.binary_op, EqBase, other, ne)
+        return self._new(fc.binary_op, nd.EqBase, other, ne)
 
     def lt(self, other: Any) -> Self:
-        return self._new(fc.binary_op, Comparator, other, operator.lt)
+        return self._new(fc.binary_op, nd.Comparator, other, operator.lt)
 
     def le(self, other: Any) -> Self:
-        return self._new(fc.binary_op, Comparator, other, operator.le)
+        return self._new(fc.binary_op, nd.Comparator, other, operator.le)
 
     def gt(self, other: Any) -> Self:
-        return self._new(fc.binary_op, Comparator, other, operator.gt)
+        return self._new(fc.binary_op, nd.Comparator, other, operator.gt)
 
     def ge(self, other: Any) -> Self:
-        return self._new(fc.binary_op, Comparator, other, operator.ge)
+        return self._new(fc.binary_op, nd.Comparator, other, operator.ge)
 
     def and_(self, other: Any) -> Self:
         return self._new(nd.And, other)

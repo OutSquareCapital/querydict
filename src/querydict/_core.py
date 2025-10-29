@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Mapping, Sized
 from enum import StrEnum
-from typing import Any
-
-from ._checks import is_comparable, is_list, not_empty
+from typing import Any, TypeIs
 
 
 class Kword(StrEnum):
@@ -28,15 +24,6 @@ class Kword(StrEnum):
     SPACE = " "
 
 
-def as_ref(fnode: Node) -> str:
-    s = fnode.as_jmespath()
-    match s:
-        case s if s.startswith(Kword.REF):
-            return s
-        case _:
-            return Kword.REF + s or Kword.CURRENT
-
-
 def _is_leading_dot(text: str) -> bool:
     return text.startswith((Kword.DOT, "[", "{", "(", "`", Kword.CURRENT) or text == "")
 
@@ -49,164 +36,41 @@ def ensure_leading_dot(text: str) -> str:
             return Kword.DOT + text
 
 
-class Node(ABC):
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.as_jmespath() or Kword.CURRENT})"
-
-    @abstractmethod
-    def eval(self) -> Callable[[Any], Any]:
-        """Return a callable that evaluates the node against the given value."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def as_jmespath(self) -> str:
-        """Convert the node to its JMESPath string representation."""
-        raise NotImplementedError
+def is_sized(x: Any) -> TypeIs[Sized]:
+    return isinstance(x, Sized)
 
 
-@dataclass(slots=True, repr=False)
-class ProjectionBase(Node):
-    base: Node
-    rhs: Node
-    separator: Kword
-    iter_func: Callable[[Any], list[Any] | None]
-
-    def eval(self) -> Callable[[Any], list[Any] | None]:
-        base_eval = self.base.eval()
-        rhs_eval = self.rhs.eval()
-
-        def _eval(value: Any) -> list[Any] | None:
-            seq = self.iter_func(base_eval(value))
-            return (
-                [rhs_eval(el) for el in seq if el is not None]
-                if seq is not None
-                else None
-            )
-
-        return _eval
-
-    def as_jmespath(self) -> str:
-        return f"{self.base.as_jmespath()}{self.separator}{ensure_leading_dot(self.rhs.as_jmespath())}"
+def is_number(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
 
 
-@dataclass(slots=True, repr=False)
-class BinaryNode(Node):
-    left: Node
-    right: Node
-
-    @property
-    def _kword(self) -> str:
-        return self.__class__.__name__.upper()
-
-    def as_jmespath(self) -> str:
-        return (
-            f"{self.left.as_jmespath()} {Kword[self._kword]} {self.right.as_jmespath()}"
-        )
+def is_mapping(x: Any) -> TypeIs[Mapping[Any, Any]]:
+    return isinstance(x, Mapping)
 
 
-@dataclass(slots=True, repr=False)
-class BinaryOp(BinaryNode):
-    op: Callable[[Any, Any], bool]
-
-    @property
-    def _kword(self) -> str:
-        return self.op.__name__.upper()
+def is_list(x: Any) -> TypeIs[list[Any]]:
+    return isinstance(x, list)
 
 
-@dataclass(slots=True, repr=False)
-class EqBase(BinaryOp):
-    def eval(self) -> Callable[[Any], bool]:
-        left_eval = self.left.eval()
-        right_eval = self.right.eval()
-        op = self.op
-
-        def _eval(value: Any) -> bool:
-            return op(left_eval(value), right_eval(value))
-
-        return _eval
+def is_comparable(x: Any) -> bool:
+    return is_number(x) or isinstance(x, str)
 
 
-@dataclass(slots=True, repr=False)
-class Comparator(BinaryOp):
-    def eval(self) -> Callable[[Any], bool | None]:
-        left_eval = self.left.eval()
-        right_eval = self.right.eval()
-        op = self.op
-
-        def _eval(value: Any) -> bool | None:
-            left = left_eval(value)
-            right = right_eval(value)
-            return (
-                op(left, right)
-                if (is_comparable(left) and is_comparable(right))
-                else None
-            )
-
-        return _eval
+def eq(x: Any, y: Any) -> bool:
+    if is_number(x) and x in (0, 1):
+        return not isinstance(y, bool)
+    if is_number(y) and y in (0, 1):
+        return not isinstance(x, bool)
+    return x == y
 
 
-@dataclass(slots=True, repr=False)
-class AssociativeNode(BinaryNode):
-    def eval(self) -> Callable[[Any], Any]:
-        left_eval = self.left.eval()
-        right_eval = self.right.eval()
-
-        def _eval(value: Any) -> Any:
-            left_val = left_eval(value)
-            return left_val if not_empty(left_val) else right_eval(value)
-
-        return _eval
+def ne(x: Any, y: Any) -> bool:
+    return not eq(x, y)
 
 
-@dataclass(slots=True, repr=False)
-class CallableNode(Node):
-    inner: Node
-    func: Callable[[Any], Any]
-
-    def eval(self):
-        evaluator = self.inner.eval()
-
-        def _eval(value: Any) -> Any:
-            return self.func(evaluator(value))
-
-        return _eval
-
-    def as_jmespath(self) -> str:
-        return f"{self.func.__name__}({self.inner.as_jmespath() or Kword.CURRENT})"
+def is_empty(v: Any) -> bool:
+    return v in ("", [], {}) or v is None or v is False
 
 
-@dataclass(slots=True, repr=False)
-class Identity(Node):
-    def eval(self) -> Callable[[Any], Any]:
-        def _eval(value: Any) -> Any:
-            return value
-
-        return _eval
-
-    def as_jmespath(self) -> str:
-        return ""
-
-
-@dataclass(slots=True, repr=False)
-class KeyNode(Node):
-    base: Node
-    key_of: Callable[[Identity], Node]
-    key_name: str
-    func: Callable[[list[Any], Any], Any]
-
-    def _key_func(self) -> Callable[[Any], Any]:
-        key_eval = self.key_of(Identity()).eval()
-        return lambda el: key_eval(el)
-
-    def eval(self) -> Callable[[Any], Any]:
-        base_eval = self.base.eval()
-        key_fn = self._key_func()
-
-        def _eval(value: Any) -> Any:
-            arr = base_eval(value)
-            return self.func(arr, key_fn) if is_list(arr) else None
-
-        return _eval
-
-    def as_jmespath(self) -> str:
-        return f"{self.key_name}({self.base.as_jmespath()}, {as_ref(self.key_of(Identity()))})"
+def not_empty(v: Any) -> bool:
+    return not is_empty(v)
