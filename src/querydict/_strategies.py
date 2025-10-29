@@ -2,6 +2,8 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+import cytoolz as cz
+
 from ._core import (
     EvalFunc,
     is_comparable,
@@ -11,6 +13,17 @@ from ._core import (
     is_sized,
     not_empty,
 )
+
+
+def literal(value: Any) -> EvalFunc:
+    def _eval(_: Any) -> Any:
+        return value
+
+    return _eval
+
+
+def identity() -> EvalFunc:
+    return cz.functoolz.identity
 
 
 def eq(
@@ -113,20 +126,6 @@ def filter_projection(
 def callable_node(base: EvalFunc, func: EvalFunc) -> EvalFunc:
     def _eval(value: Any) -> Any:
         return func(base(value))
-
-    return _eval
-
-
-def identity() -> EvalFunc:
-    def _eval(value: Any) -> Any:
-        return value
-
-    return _eval
-
-
-def literal() -> EvalFunc:
-    def _eval(value: Any) -> Any:
-        return value
 
     return _eval
 

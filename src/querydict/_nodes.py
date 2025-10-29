@@ -5,8 +5,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-import cytoolz as cz
-
 from . import _strategies as st
 from ._core import EvalFunc, IntoExpr
 
@@ -21,7 +19,7 @@ class Node(ABC):
 @dataclass(slots=True)
 class Identity(Node):
     def eval(self) -> EvalFunc:
-        return cz.functoolz.identity
+        return st.identity()
 
 
 @dataclass(slots=True)
@@ -29,7 +27,7 @@ class LiteralExpr(Node):
     value: IntoExpr
 
     def eval(self) -> EvalFunc:
-        return lambda x: cz.functoolz.identity(self.value)
+        return st.literal(self.value)
 
 
 @dataclass(slots=True)
