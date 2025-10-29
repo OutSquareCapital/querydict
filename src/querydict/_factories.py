@@ -24,6 +24,23 @@ def into_expr(obj: IntoExpr) -> nd.Node:
             return nd.LiteralExpr(obj)
 
 
+def field(node: nd.Node, name: str):
+    return subexpr(node, nd.Field, name)
+
+
+def index(node: nd.Node, i: int):
+    return subexpr(node, nd.Index, i)
+
+
+def slice(
+    node: nd.Node,
+    start: int | None = None,
+    end: int | None = None,
+    step: int | None = None,
+) -> nd.SubExpr:
+    return subexpr(node, nd.Slice, start, end, step)
+
+
 def flatten(node: nd.Node) -> nd.Flatten:
     return nd.Flatten(node.eval())
 
@@ -39,6 +56,18 @@ def binary_op(
     op: Callable[[Any, Any], bool],
 ) -> nd.BinaryOp:
     return sort(node.eval(), into_expr(right).eval(), op)
+
+
+def equality(
+    node: nd.Node, right: IntoExpr, op: Callable[[Any, Any], bool]
+) -> nd.BinaryOp:
+    return binary_op(node, nd.EqBase, right, op)
+
+
+def comparator(
+    node: nd.Node, right: IntoExpr, op: Callable[[Any, Any], bool]
+) -> nd.BinaryOp:
+    return binary_op(node, nd.Comparator, right, op)
 
 
 def binary(
