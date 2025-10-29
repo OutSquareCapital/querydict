@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sized
+from collections.abc import Callable, Mapping, Sized
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypeIs
 
@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     from ._nodes import Node
 
 type IntoExpr = Node | Query | str | int | float | bool | None
+
+type EvalFunc = Callable[[Any], Any]
 
 
 class Kword(StrEnum):

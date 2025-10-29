@@ -8,22 +8,19 @@ from typing import Any
 import cytoolz as cz
 
 from . import _strategies as st
-from ._core import (
-    IntoExpr,
-    Kword,
-)
+from ._core import EvalFunc, IntoExpr, Kword
 
 
 class Node(ABC):
     @abstractmethod
-    def eval(self) -> Callable[[Any], Any]:
+    def eval(self) -> EvalFunc:
         """Return a callable that evaluates the node against the given value."""
         raise NotImplementedError
 
 
 @dataclass(slots=True)
 class Identity(Node):
-    def eval(self) -> Callable[[Any], Any]:
+    def eval(self) -> EvalFunc:
         return cz.functoolz.identity
 
 
@@ -31,7 +28,7 @@ class Identity(Node):
 class LiteralExpr(Node):
     value: IntoExpr
 
-    def eval(self) -> Callable[[Any], Any]:
+    def eval(self) -> EvalFunc:
         return lambda x: cz.functoolz.identity(self.value)
 
 
@@ -39,7 +36,7 @@ class LiteralExpr(Node):
 class Field(Node):
     name: str
 
-    def eval(self) -> Callable[[Any], Any]:
+    def eval(self) -> EvalFunc:
         return st.field(self.name)
 
 
@@ -47,7 +44,7 @@ class Field(Node):
 class Index(Node):
     i: int
 
-    def eval(self) -> Callable[[Any], Any]:
+    def eval(self) -> EvalFunc:
         return st.index(self.i)
 
 
@@ -65,7 +62,7 @@ class Slice(Node):
 class SubExpr(Node):
     parts: tuple[Node, ...]
 
-    def eval(self) -> Callable[[Any], Any]:
+    def eval(self) -> EvalFunc:
         return st.sub_expr(tuple(p.eval() for p in self.parts))
 
 
@@ -73,7 +70,7 @@ class SubExpr(Node):
 class MultiList(Node):
     items: tuple[Node, ...]
 
-    def eval(self) -> Callable[[Any], Any]:
+    def eval(self) -> EvalFunc:
         return st.multi_list(tuple(it.eval() for it in self.items))
 
 
@@ -81,39 +78,37 @@ class MultiList(Node):
 class MultiDict(Node):
     mapping: tuple[tuple[str, Node], ...]
 
-    def eval(self) -> Callable[[Any], Any]:
+    def eval(self) -> EvalFunc:
         return st.multi_dict(tuple((k, n.eval()) for k, n in self.mapping))
 
 
 @dataclass(slots=True)
 class NodeWithBase(Node):
-    base: Node
+    base: EvalFunc
 
 
 @dataclass(slots=True)
 class ProjectionBase(NodeWithBase):
-    rhs: Node
+    rhs: EvalFunc
     separator: Kword
     iter_func: Callable[[Any], list[Any] | None]
 
     def eval(self) -> Callable[[Any], list[Any] | None]:
-        return st.project_base(self.base.eval(), self.rhs.eval(), self.iter_func)
+        return st.project_base(self.base, self.rhs, self.iter_func)
 
 
 @dataclass(slots=True)
 class FilterProjection(NodeWithBase):
-    then: Node
-    cond: Node
+    then: EvalFunc
+    cond: EvalFunc
 
     def eval(self) -> Callable[[Any], list[Any] | None]:
-        return st.filter_projection(
-            self.base.eval(), self.then.eval(), self.cond.eval()
-        )
+        return st.filter_projection(self.base, self.then, self.cond)
 
 
 @dataclass(slots=True)
 class BinaryNode(NodeWithBase):
-    right: Node
+    right: EvalFunc
 
     @property
     def _kword(self) -> str:
@@ -132,25 +127,25 @@ class BinaryOp(BinaryNode):
 @dataclass(slots=True)
 class EqBase(BinaryOp):
     def eval(self) -> Callable[[Any], bool]:
-        return st.eq(self.base.eval(), self.right.eval(), self.op)
+        return st.eq(self.base, self.right, self.op)
 
 
 @dataclass(slots=True)
 class Comparator(BinaryOp):
     def eval(self) -> Callable[[Any], bool | None]:
-        return st.comparator(self.base.eval(), self.right.eval(), self.op)
+        return st.comparator(self.base, self.right, self.op)
 
 
 @dataclass(slots=True)
 class AssociativeNode(BinaryNode):
-    def eval(self) -> Callable[[Any], Any]:
-        return st.associate(self.base.eval(), self.right.eval())
+    def eval(self) -> EvalFunc:
+        return st.associate(self.base, self.right)
 
 
 @dataclass(slots=True)
 class And(AssociativeNode):
-    def eval(self) -> Callable[[Any], Any]:
-        return st.and_(self.base.eval(), self.right.eval())
+    def eval(self) -> EvalFunc:
+        return st.and_(self.base, self.right)
 
 
 @dataclass(slots=True)
@@ -160,10 +155,10 @@ class Or(AssociativeNode):
 
 @dataclass(slots=True)
 class CallableNode(NodeWithBase):
-    func: Callable[[Any], Any]
+    func: EvalFunc
 
-    def eval(self) -> Callable[[Any], Any]:
-        return st.callable_node(self.base.eval(), self.func)
+    def eval(self) -> EvalFunc:
+        return st.callable_node(self.base, self.func)
 
 
 @dataclass(slots=True)
@@ -172,28 +167,28 @@ class KeyNode(NodeWithBase):
     key_name: str
     func: Callable[[list[Any], Any], Any]
 
-    def eval(self) -> Callable[[Any], Any]:
-        return st.key_node(self.base.eval(), self.func, self.key_of(Identity()).eval())
+    def eval(self) -> EvalFunc:
+        return st.key_node(self.base, self.func, self.key_of(Identity()).eval())
 
 
 @dataclass(slots=True)
 class Pipe(NodeWithBase):
-    right: Node
+    right: EvalFunc
 
-    def eval(self) -> Callable[[Any], Any]:
-        return st.pipe(self.base.eval(), self.right.eval())
+    def eval(self) -> EvalFunc:
+        return st.pipe(self.base, self.right)
 
 
 @dataclass(slots=True)
 class Flatten(NodeWithBase):
-    def eval(self) -> Callable[[Any], Any]:
-        return st.flatten(self.base.eval())
+    def eval(self) -> EvalFunc:
+        return st.flatten(self.base)
 
 
 @dataclass(slots=True)
 class Not(NodeWithBase):
     def eval(self) -> Callable[[Any], bool]:
-        return st.not_(self.base.eval())
+        return st.not_(self.base)
 
 
 @dataclass(slots=True)
@@ -201,4 +196,4 @@ class MapApply(NodeWithBase):
     build: Callable[[Identity], Node]
 
     def eval(self) -> Callable[[Any], list[Any] | None]:
-        return st.map_apply(self.base.eval(), self.build(Identity()).eval())
+        return st.map_apply(self.base, self.build(Identity()).eval())

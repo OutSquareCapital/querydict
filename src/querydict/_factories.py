@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from . import _nodes as nd
-from ._core import IntoExpr, Kword
+from ._core import EvalFunc, IntoExpr, Kword
 
 if TYPE_CHECKING:
     from ._main import Query
@@ -24,13 +24,21 @@ def into_expr(obj: IntoExpr) -> nd.Node:
             return nd.LiteralExpr(obj)
 
 
+def flatten(node: nd.Node) -> nd.Flatten:
+    return nd.Flatten(node.eval())
+
+
+def not_(node: nd.Node) -> nd.Not:
+    return nd.Not(node.eval())
+
+
 def binary_op(
     node: nd.Node,
     sort: type[nd.BinaryOp],
     right: IntoExpr,
     op: Callable[[Any, Any], bool],
 ) -> nd.BinaryOp:
-    return sort(node, into_expr(right), op)
+    return sort(node.eval(), into_expr(right).eval(), op)
 
 
 def binary(
@@ -43,18 +51,20 @@ def unary(node: nd.Node, op: Callable[[nd.Node], nd.Node]) -> nd.Node:
     return op(node)
 
 
-def callable(node: nd.Node, func: Callable[[Any], Any]) -> nd.CallableNode:
-    return nd.CallableNode(node, func)
+def callable(node: nd.Node, func: EvalFunc) -> nd.CallableNode:
+    return nd.CallableNode(node.eval(), func)
 
 
 def projection(
     node: nd.Node, rhs: IntoExpr, func: Callable[[Any], list[Any] | None]
 ) -> nd.ProjectionBase:
-    return nd.ProjectionBase(node, into_expr(rhs), Kword[func.__name__.upper()], func)
+    return nd.ProjectionBase(
+        node.eval(), into_expr(rhs).eval(), Kword[func.__name__.upper()], func
+    )
 
 
 def filter_project(base: nd.Node, then: IntoExpr, cond: nd.Node) -> nd.FilterProjection:
-    return nd.FilterProjection(base, into_expr(then), cond)
+    return nd.FilterProjection(base.eval(), into_expr(then).eval(), cond.eval())
 
 
 def key(
@@ -68,7 +78,7 @@ def key(
     def _b(_: nd.Identity) -> nd.Node:
         return key(identity()).node
 
-    return nd.KeyNode(node, _b, name, func)
+    return nd.KeyNode(node.eval(), _b, name, func)
 
 
 def subexpr[**P](
@@ -83,15 +93,15 @@ def subexpr[**P](
 
 
 def and_op(left: nd.Node, right: IntoExpr) -> nd.And:
-    return nd.And(left, into_expr(right))
+    return nd.And(left.eval(), into_expr(right).eval())
 
 
 def or_op(left: nd.Node, right: IntoExpr) -> nd.Or:
-    return nd.Or(left, into_expr(right))
+    return nd.Or(left.eval(), into_expr(right).eval())
 
 
 def pipe_op(left: nd.Node, right: nd.Node) -> nd.Pipe:
-    return nd.Pipe(left, right)
+    return nd.Pipe(left.eval(), right.eval())
 
 
 def map_apply(base: nd.Node, build: Callable[[Query], Query]) -> nd.MapApply:
@@ -100,4 +110,4 @@ def map_apply(base: nd.Node, build: Callable[[Query], Query]) -> nd.MapApply:
     def _b(_: nd.Identity) -> nd.Node:
         return build(Query(nd.Identity())).node
 
-    return nd.MapApply(base, _b)
+    return nd.MapApply(base.eval(), _b)

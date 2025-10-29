@@ -2,13 +2,19 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from ._core import is_comparable, is_list, is_mapping, is_number, is_sized, not_empty
+from ._core import (
+    EvalFunc,
+    is_comparable,
+    is_list,
+    is_mapping,
+    is_number,
+    is_sized,
+    not_empty,
+)
 
 
 def eq(
-    left_eval: Callable[[Any], Any],
-    right_eval: Callable[[Any], Any],
-    op: Callable[[Any, Any], bool],
+    left_eval: EvalFunc, right_eval: EvalFunc, op: Callable[[Any, Any], bool]
 ) -> Callable[[Any], bool]:
     def _eval(value: Any) -> bool:
         return op(left_eval(value), right_eval(value))
@@ -16,7 +22,7 @@ def eq(
     return _eval
 
 
-def not_(expr_eval: Callable[[Any], Any]) -> Callable[[Any], bool]:
+def not_(expr_eval: EvalFunc) -> Callable[[Any], bool]:
     def _eval(value: Any) -> bool:
         v = expr_eval(value)
         if is_number(v) and v == 0:
@@ -26,7 +32,7 @@ def not_(expr_eval: Callable[[Any], Any]) -> Callable[[Any], bool]:
     return _eval
 
 
-def index(i: int) -> Callable[[Any], Any]:
+def index(i: int) -> EvalFunc:
     def _eval(value: Any) -> Any:
         if not is_list(value):
             return None
@@ -49,7 +55,7 @@ def slice_on(
     return _eval
 
 
-def multi_list(items: tuple[Callable[[Any], Any], ...]) -> Callable[[Any], Any]:
+def multi_list(items: tuple[EvalFunc, ...]) -> EvalFunc:
     def _eval(value: Any) -> Any:
         return [it_eval(value) for it_eval in items]
 
@@ -57,11 +63,9 @@ def multi_list(items: tuple[Callable[[Any], Any], ...]) -> Callable[[Any], Any]:
 
 
 def key_node(
-    base_eval: Callable[[Any], Any],
-    func: Callable[[list[Any], Any], Any],
-    key_eval: Callable[[Any], Any],
-) -> Callable[[Any], Any]:
-    def _key_func() -> Callable[[Any], Any]:
+    base_eval: EvalFunc, func: Callable[[list[Any], Any], Any], key_eval: EvalFunc
+) -> EvalFunc:
+    def _key_func() -> EvalFunc:
         return lambda el: key_eval(el)
 
     key_fn = _key_func()
@@ -74,8 +78,8 @@ def key_node(
 
 
 def multi_dict(
-    mapping: tuple[tuple[str, Callable[[Any], Any]], ...],
-) -> Callable[[Any], Any]:
+    mapping: tuple[tuple[str, EvalFunc], ...],
+) -> EvalFunc:
     def _eval(value: Any) -> Any:
         return {k: n_eval(value) for k, n_eval in mapping}
 
@@ -83,8 +87,8 @@ def multi_dict(
 
 
 def project_base(
-    base_eval: Callable[[Any], Any],
-    rhs_eval: Callable[[Any], Any],
+    base_eval: EvalFunc,
+    rhs_eval: EvalFunc,
     iter_func: Callable[[Any], list[Any] | None],
 ) -> Callable[[Any], list[Any] | None]:
     def _eval(value: Any) -> list[Any] | None:
@@ -97,9 +101,7 @@ def project_base(
 
 
 def filter_projection(
-    base_eval: Callable[[Any], Any],
-    then_eval: Callable[[Any], Any],
-    cond_eval: Callable[[Any], Any],
+    base_eval: EvalFunc, then_eval: EvalFunc, cond_eval: EvalFunc
 ) -> Callable[[Any], list[Any] | None]:
     def _eval(value: Any) -> list[Any] | None:
         seq = base_eval(value)
@@ -108,39 +110,35 @@ def filter_projection(
     return _eval
 
 
-def callable_node(
-    base: Callable[[Any], Any], func: Callable[[Any], Any]
-) -> Callable[[Any], Any]:
+def callable_node(base: EvalFunc, func: EvalFunc) -> EvalFunc:
     def _eval(value: Any) -> Any:
         return func(base(value))
 
     return _eval
 
 
-def identity() -> Callable[[Any], Any]:
+def identity() -> EvalFunc:
     def _eval(value: Any) -> Any:
         return value
 
     return _eval
 
 
-def literal() -> Callable[[Any], Any]:
+def literal() -> EvalFunc:
     def _eval(value: Any) -> Any:
         return value
 
     return _eval
 
 
-def field(name: str) -> Callable[[Any], Any]:
+def field(name: str) -> EvalFunc:
     def _eval(value: Any) -> Any:
         return value.get(name, None) if is_mapping(value) else None
 
     return _eval
 
 
-def associate(
-    left_eval: Callable[[Any], Any], right_eval: Callable[[Any], Any]
-) -> Callable[[Any], Any]:
+def associate(left_eval: EvalFunc, right_eval: EvalFunc) -> EvalFunc:
     def _eval(value: Any) -> Any:
         left_val = left_eval(value)
         return left_val if not_empty(left_val) else right_eval(value)
@@ -148,7 +146,7 @@ def associate(
     return _eval
 
 
-def flatten(base_eval: Callable[[Any], Any]) -> Callable[[Any], Any]:
+def flatten(base_eval: EvalFunc) -> EvalFunc:
     def _eval(value: Any) -> Any:
         seq = base_eval(value)
         if not is_list(seq):
@@ -165,7 +163,7 @@ def flatten(base_eval: Callable[[Any], Any]) -> Callable[[Any], Any]:
 
 
 def map_apply(
-    base_eval: Callable[[Any], Any], build_eval: Callable[[Any], Any]
+    base_eval: EvalFunc, build_eval: EvalFunc
 ) -> Callable[[Any], list[Any] | None]:
     def _eval(value: Any) -> list[Any] | None:
         arr = base_eval(value)
@@ -175,8 +173,8 @@ def map_apply(
 
 
 def comparator(
-    left_eval: Callable[[Any], Any],
-    right_eval: Callable[[Any], Any],
+    left_eval: EvalFunc,
+    right_eval: EvalFunc,
     op: Callable[[Any, Any], bool],
 ) -> Callable[[Any], bool | None]:
     def _eval(value: Any) -> bool | None:
@@ -189,9 +187,7 @@ def comparator(
     return _eval
 
 
-def and_(
-    left_eval: Callable[[Any], Any], right_eval: Callable[[Any], Any]
-) -> Callable[[Any], Any]:
+def and_(left_eval: EvalFunc, right_eval: EvalFunc) -> EvalFunc:
     def _eval(value: Any) -> Any:
         left_val = left_eval(value)
         return right_eval(value) if not_empty(left_val) else left_val
@@ -199,9 +195,7 @@ def and_(
     return _eval
 
 
-def pipe(
-    left_eval: Callable[[Any], Any], right_eval: Callable[[Any], Any]
-) -> Callable[[Any], Any]:
+def pipe(left_eval: EvalFunc, right_eval: EvalFunc) -> EvalFunc:
     def _eval(value: Any) -> Any:
         return right_eval(left_eval(value))
 
@@ -209,7 +203,7 @@ def pipe(
 
 
 def filter_project(
-    value: Any, then_eval: Callable[[Any], Any], cond_eval: Callable[[Any], Any]
+    value: Any, then_eval: EvalFunc, cond_eval: EvalFunc
 ) -> list[Any] | None:
     return (
         [then_eval(el) for el in value if not_empty(cond_eval(el))]
@@ -218,7 +212,7 @@ def filter_project(
     )
 
 
-def sub_expr(part_evals: tuple[Callable[[Any], Any], ...]) -> Callable[[Any], Any]:
+def sub_expr(part_evals: tuple[EvalFunc, ...]) -> EvalFunc:
     def _eval(value: Any) -> Any:
         out = value
         for p_eval in part_evals:
@@ -291,21 +285,21 @@ def object_project(value: Any) -> list[Any] | None:
     return list(value.values()) if is_mapping(value) else None
 
 
-def sort_by(arr: list[Any], key_fn: Callable[[Any], Any]) -> list[Any]:
+def sort_by(arr: list[Any], key_fn: EvalFunc) -> list[Any]:
     try:
         return sorted(arr, key=key_fn)
     except Exception:
         return arr
 
 
-def min_by(arr: list[Any], key_fn: Callable[[Any], Any]) -> Any | None:
+def min_by(arr: list[Any], key_fn: EvalFunc) -> Any | None:
     try:
         return min(arr, key=key_fn)
     except Exception:
         return None
 
 
-def max_by(arr: list[Any], key_fn: Callable[[Any], Any]) -> Any | None:
+def max_by(arr: list[Any], key_fn: EvalFunc) -> Any | None:
     try:
         return max(arr, key=key_fn)
     except Exception:

@@ -44,7 +44,7 @@ class Query:
         return self._new(fc.projection, rhs, st.object_project)
 
     def flatten(self) -> Self:
-        return self._new(fc.unary, nd.Flatten)
+        return self._new(fc.unary, fc.flatten)
 
     def filter(self, cond: Self, then: IntoExpr) -> Self:
         return self._new(fc.filter_project, then, cond.node)
@@ -74,7 +74,7 @@ class Query:
         return self._new(fc.or_op, other)
 
     def not_(self) -> Self:
-        return self._new(fc.unary, nd.Not)
+        return self._new(fc.unary, fc.not_)
 
     def length(self) -> Self:
         return self._new(fc.callable, st.length)
