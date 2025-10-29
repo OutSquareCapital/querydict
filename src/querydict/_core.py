@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sized
 from enum import StrEnum
-from typing import Any, TypeIs
+from typing import TYPE_CHECKING, Any, TypeIs
+
+if TYPE_CHECKING:
+    from ._main import Query
+    from ._nodes import Node
+
+type IntoExpr = Node | Query | str | int | float | bool | None
 
 
 class Kword(StrEnum):
@@ -36,27 +42,27 @@ def ensure_leading_dot(text: str) -> str:
             return Kword.DOT + text
 
 
-def is_sized(x: Any) -> TypeIs[Sized]:
+def is_sized(x: object) -> TypeIs[Sized]:
     return isinstance(x, Sized)
 
 
-def is_number(x: Any) -> bool:
+def is_number(x: object) -> bool:
     return isinstance(x, (int, float)) and not isinstance(x, bool)
 
 
-def is_mapping(x: Any) -> TypeIs[Mapping[Any, Any]]:
+def is_mapping(x: object) -> TypeIs[Mapping[Any, Any]]:
     return isinstance(x, Mapping)
 
 
-def is_list(x: Any) -> TypeIs[list[Any]]:
+def is_list(x: object) -> TypeIs[list[Any]]:
     return isinstance(x, list)
 
 
-def is_comparable(x: Any) -> bool:
+def is_comparable(x: object) -> bool:
     return is_number(x) or isinstance(x, str)
 
 
-def eq(x: Any, y: Any) -> bool:
+def eq(x: object, y: object) -> bool:
     if is_number(x) and x in (0, 1):
         return not isinstance(y, bool)
     if is_number(y) and y in (0, 1):
@@ -64,13 +70,13 @@ def eq(x: Any, y: Any) -> bool:
     return x == y
 
 
-def ne(x: Any, y: Any) -> bool:
+def ne(x: object, y: object) -> bool:
     return not eq(x, y)
 
 
-def is_empty(v: Any) -> bool:
+def is_empty(v: object) -> bool:
     return v in ("", [], {}) or v is None or v is False
 
 
-def not_empty(v: Any) -> bool:
+def not_empty(v: object) -> bool:
     return not is_empty(v)

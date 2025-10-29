@@ -13,16 +13,15 @@ import querydict as qd
 class Case:
     name: str
     build: Callable[[], qd.Query]
-    data: Any
+    data: dict[str, Any]
 
-
-def check(c: Case) -> None:
-    q = c.build()
-    expr = q.to_jmespath()
-    got = q.search(c.data)
-    want = jmespath.search(expr, c.data)
-    assert got == want, f"{c.name}: \n{got=!r} != \n{want=!r}  \nexpr={expr!r}"
-    print(f"✔ {c.name}, \nexpr: \n  {expr}, \nresult: \n  {got!r}")
+    def check(self) -> None:
+        q = self.build()
+        expr = q.to_jmespath()
+        got = q.search(self.data)
+        want = jmespath.search(expr, self.data)
+        assert got == want, f"{self.name}: \n{got=!r} != \n{want=!r}  \nexpr={expr!r}"
+        print(f"✔ {self.name}, \nexpr: \n  {expr}, \nresult: \n  {got!r}")
 
 
 DATA_USER: dict[str, Any] = {
@@ -157,7 +156,7 @@ CASES: list[Case] = [
 def main() -> None:
     print(f"Running {len(CASES)} cases…\n")
     for c in CASES:
-        check(c)
+        c.check()
     print("\nAll good.")
 
 

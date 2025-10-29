@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ._core import (
+    IntoExpr,
     Kword,
     ensure_leading_dot,
     is_comparable,
@@ -191,7 +192,7 @@ class KeyNode(Node):
 
 @dataclass(slots=True, repr=False)
 class LiteralExpr(Node):
-    value: Any
+    value: IntoExpr
 
     def eval(self) -> Callable[[Any], Any]:
         val = self.value

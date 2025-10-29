@@ -8,14 +8,14 @@ from typing import Any, Concatenate, Self
 from . import _factories as fc
 from . import _nodes as nd
 from . import _strategies as st
-from ._core import Kword, eq, ne
+from ._core import IntoExpr, Kword, eq, ne
 
 
 @dataclass(slots=True, repr=False)
 class Query:
     node: nd.Node
 
-    def _new[**P, T: nd.Node](
+    def _new[**P](
         self,
         factory: Callable[Concatenate[nd.Node, P], nd.Node],
         *args: P.args,
@@ -43,41 +43,41 @@ class Query:
     ) -> Self:
         return self._new(fc.subexpr, nd.Slice, start, end, step)
 
-    def project(self, rhs: Any) -> Self:
+    def project(self, rhs: IntoExpr) -> Self:
         return self._new(fc.projection, rhs, st.array_project)
 
-    def vproject(self, rhs: Any) -> Self:
+    def vproject(self, rhs: IntoExpr) -> Self:
         return self._new(fc.projection, rhs, st.object_project)
 
     def flatten(self) -> Self:
         return self._new(fc.unary, nd.Flatten)
 
-    def filter(self, cond: Self, then: Any) -> Self:
+    def filter(self, cond: Self, then: IntoExpr) -> Self:
         return self._new(nd.FilterProjection, fc.into_expr(then), cond.node)
 
-    def eq(self, other: Any) -> Self:
+    def eq(self, other: IntoExpr) -> Self:
         return self._new(fc.binary_op, nd.EqBase, other, eq)
 
-    def ne(self, other: Any) -> Self:
+    def ne(self, other: IntoExpr) -> Self:
         return self._new(fc.binary_op, nd.EqBase, other, ne)
 
-    def lt(self, other: Any) -> Self:
+    def lt(self, other: IntoExpr) -> Self:
         return self._new(fc.binary_op, nd.Comparator, other, operator.lt)
 
-    def le(self, other: Any) -> Self:
+    def le(self, other: IntoExpr) -> Self:
         return self._new(fc.binary_op, nd.Comparator, other, operator.le)
 
-    def gt(self, other: Any) -> Self:
+    def gt(self, other: IntoExpr) -> Self:
         return self._new(fc.binary_op, nd.Comparator, other, operator.gt)
 
-    def ge(self, other: Any) -> Self:
+    def ge(self, other: IntoExpr) -> Self:
         return self._new(fc.binary_op, nd.Comparator, other, operator.ge)
 
-    def and_(self, other: Any) -> Self:
-        return self._new(nd.And, other)
+    def and_(self, other: IntoExpr) -> Self:
+        return self._new(nd.And, fc.into_expr(other))
 
-    def or_(self, other: Any) -> Self:
-        return self._new(nd.Or, other)
+    def or_(self, other: IntoExpr) -> Self:
+        return self._new(nd.Or, fc.into_expr(other))
 
     def not_(self) -> Self:
         return self._new(fc.unary, nd.Not)

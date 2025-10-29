@@ -2,7 +2,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from ._checks import is_list, is_mapping, is_sized
+from ._core import is_list, is_mapping, is_sized
 
 
 def length(value: Any) -> int | None:

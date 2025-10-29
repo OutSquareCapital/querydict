@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from . import _nodes as nd
-from ._core import Kword
+from ._core import IntoExpr, Kword
 
 if TYPE_CHECKING:
     from ._main import Query
 
 
-def into_expr(obj: Any) -> nd.Node:
+def into_expr(obj: IntoExpr) -> nd.Node:
     from ._main import Query, field
 
     match obj:
@@ -23,13 +25,16 @@ def into_expr(obj: Any) -> nd.Node:
 
 
 def binary_op(
-    node: nd.Node, sort: type[nd.BinaryOp], right: Any, op: Callable[[Any, Any], bool]
+    node: nd.Node,
+    sort: type[nd.BinaryOp],
+    right: IntoExpr,
+    op: Callable[[Any, Any], bool],
 ):
     return sort(node, into_expr(right), op)
 
 
 def binary(
-    node: nd.Node, op: Callable[[nd.Node, nd.Node], nd.BinaryNode], right: Any
+    node: nd.Node, op: Callable[[nd.Node, nd.Node], nd.BinaryNode], right: IntoExpr
 ) -> nd.BinaryNode:
     return op(node, into_expr(right))
 
@@ -43,7 +48,7 @@ def callable(node: nd.Node, func: Callable[[Any], Any]) -> nd.CallableNode:
 
 
 def projection(
-    node: nd.Node, rhs: Any, func: Callable[[Any], list[Any] | None]
+    node: nd.Node, rhs: IntoExpr, func: Callable[[Any], list[Any] | None]
 ) -> nd.ProjectionBase:
     return nd.ProjectionBase(node, into_expr(rhs), Kword[func.__name__.upper()], func)
 
