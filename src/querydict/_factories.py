@@ -70,16 +70,6 @@ def comparator(
     return binary_op(node, nd.Comparator, right, op)
 
 
-def binary(
-    node: nd.Node, op: Callable[[nd.Node, nd.Node], nd.BinaryNode], right: IntoExpr
-) -> nd.BinaryNode:
-    return op(node, into_expr(right))
-
-
-def unary(node: nd.Node, op: Callable[[nd.Node], nd.Node]) -> nd.Node:
-    return op(node)
-
-
 def callable(node: nd.Node, func: EvalFunc) -> nd.CallableNode:
     return nd.CallableNode(node.eval(), func)
 
