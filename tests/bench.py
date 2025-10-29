@@ -27,6 +27,7 @@ class BenchmarkResult(TypedDict):
 class BenchmarkCase:
     name: str
     qd_query: qd.Query
+    js_query: str
 
 
 def rand_str(k: int) -> str:
@@ -49,16 +50,22 @@ def generate_data(n: int) -> JsonData:
 
 BENCHMARKS: list[BenchmarkCase] = [
     BenchmarkCase(
-        name="Projection simple (names)", qd_query=qd.field("users").project("name")
+        name="Projection simple (names)",
+        qd_query=qd.field("users").project("name"),
+        js_query="users[].name",
     ),
     BenchmarkCase(
         name="Filtre complexe (active & >30)",
         qd_query=qd.field("users").filter(
-            qd.field("age").gt(30).and_(qd.field("active").eq(True)), then="name"
+            qd.field("age").gt(30).and_(qd.field("active").eq(True)),
+            then="name",
         ),
+        js_query="users[?age > `30` && active == `true`].name",
     ),
     BenchmarkCase(
-        name="Tri (sort_by age)", qd_query=qd.field("users").sort_by(lambda e: e.age)
+        name="Tri (sort_by age)",
+        qd_query=qd.field("users").sort_by(lambda e: e.age),
+        js_query="sort_by(users, &age)",
     ),
 ]
 
@@ -89,8 +96,7 @@ def format_results(results: list[BenchmarkResult]) -> pl.DataFrame:
 def add_case(
     case: BenchmarkCase, size: int, runs: int, data: JsonData
 ) -> BenchmarkResult:
-    jp_expr = case.qd_query.to_jmespath()
-    jp_compiled = jmespath.compile(jp_expr)
+    jp_compiled = jmespath.compile(case.js_query)
     assert jp_compiled.search(data) == case.qd_query.search(data)
 
     t_qd = time_query(case.qd_query.search, data, runs)

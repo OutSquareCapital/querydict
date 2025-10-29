@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json as _json
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -9,7 +8,6 @@ from typing import Any
 from ._core import (
     IntoExpr,
     Kword,
-    ensure_leading_dot,
     is_comparable,
     is_list,
     is_mapping,
@@ -19,30 +17,13 @@ from ._core import (
 
 
 class Node(ABC):
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.as_jmespath() or Kword.CURRENT})"
-
     @abstractmethod
     def eval(self) -> Callable[[Any], Any]:
         """Return a callable that evaluates the node against the given value."""
         raise NotImplementedError
 
-    @abstractmethod
-    def as_jmespath(self) -> str:
-        """Convert the node to its JMESPath string representation."""
-        raise NotImplementedError
 
-
-def as_ref(fnode: Node) -> str:
-    s = fnode.as_jmespath()
-    match s:
-        case s if s.startswith(Kword.REF):
-            return s
-        case _:
-            return Kword.REF + s or Kword.CURRENT
-
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Identity(Node):
     def eval(self) -> Callable[[Any], Any]:
         def _eval(value: Any) -> Any:
@@ -50,11 +31,8 @@ class Identity(Node):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return ""
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class LiteralExpr(Node):
     value: IntoExpr
 
@@ -66,11 +44,8 @@ class LiteralExpr(Node):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return f"`{_json.dumps(self.value, separators=(',', ':'), default=str)}`"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Field(Node):
     name: str
 
@@ -82,11 +57,8 @@ class Field(Node):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return Kword.DOT + self.name
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Index(Node):
     i: int
 
@@ -103,11 +75,8 @@ class Index(Node):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return f"[{self.i}]"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Slice(Node):
     start: int | None
     end: int | None
@@ -121,16 +90,8 @@ class Slice(Node):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        start = "" if self.start is None else str(self.start)
-        end = "" if self.end is None else str(self.end)
-        step = "" if self.step is None else str(self.step)
-        if self.step is None:
-            return f"[{start}:{end}]"
-        return f"[{start}:{end}:{step}]"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class SubExpr(Node):
     parts: tuple[Node, ...]
 
@@ -145,12 +106,8 @@ class SubExpr(Node):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        s = "".join(p.as_jmespath() for p in self.parts)
-        return s[1:] if s.startswith(Kword.DOT) else s
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class MultiList(Node):
     items: tuple[Node, ...]
 
@@ -162,12 +119,8 @@ class MultiList(Node):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        inner = ", ".join(it.as_jmespath() or Kword.CURRENT for it in self.items)
-        return f"[{inner}]"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class MultiDict(Node):
     mapping: tuple[tuple[str, Node], ...]
 
@@ -179,19 +132,13 @@ class MultiDict(Node):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        items = ", ".join(
-            f"{k}: {n.as_jmespath() or Kword.CURRENT}" for k, n in self.mapping
-        )
-        return f"{{{items}}}"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class NodeWithBase(Node):
     base: Node
 
 
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class ProjectionBase(NodeWithBase):
     rhs: Node
     separator: Kword
@@ -211,11 +158,8 @@ class ProjectionBase(NodeWithBase):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return f"{self.base.as_jmespath()}{self.separator}{ensure_leading_dot(self.rhs.as_jmespath())}"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class FilterProjection(NodeWithBase):
     then: Node
     cond: Node
@@ -235,13 +179,8 @@ class FilterProjection(NodeWithBase):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        cond = self.cond.as_jmespath()
-        cond = cond[1:] if cond.startswith(Kword.DOT) else cond
-        return f"{self.base.as_jmespath()}[?{cond}]{ensure_leading_dot(self.then.as_jmespath())}"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class BinaryNode(NodeWithBase):
     right: Node
 
@@ -249,13 +188,8 @@ class BinaryNode(NodeWithBase):
     def _kword(self) -> str:
         return self.__class__.__name__.upper()
 
-    def as_jmespath(self) -> str:
-        return (
-            f"{self.base.as_jmespath()} {Kword[self._kword]} {self.right.as_jmespath()}"
-        )
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class BinaryOp(BinaryNode):
     op: Callable[[Any, Any], bool]
 
@@ -264,7 +198,7 @@ class BinaryOp(BinaryNode):
         return self.op.__name__.upper()
 
 
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class EqBase(BinaryOp):
     def eval(self) -> Callable[[Any], bool]:
         left_eval = self.base.eval()
@@ -277,7 +211,7 @@ class EqBase(BinaryOp):
         return _eval
 
 
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Comparator(BinaryOp):
     def eval(self) -> Callable[[Any], bool | None]:
         left_eval = self.base.eval()
@@ -296,7 +230,7 @@ class Comparator(BinaryOp):
         return _eval
 
 
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class AssociativeNode(BinaryNode):
     def eval(self) -> Callable[[Any], Any]:
         left_eval = self.base.eval()
@@ -309,7 +243,7 @@ class AssociativeNode(BinaryNode):
         return _eval
 
 
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class And(AssociativeNode):
     def eval(self) -> Callable[[Any], Any]:
         left_eval = self.base.eval()
@@ -322,12 +256,12 @@ class And(AssociativeNode):
         return _eval
 
 
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Or(AssociativeNode):
     pass
 
 
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class CallableNode(NodeWithBase):
     func: Callable[[Any], Any]
 
@@ -339,11 +273,8 @@ class CallableNode(NodeWithBase):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return f"{self.func.__name__}({self.base.as_jmespath() or Kword.CURRENT})"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class KeyNode(NodeWithBase):
     key_of: Callable[[Identity], Node]
     key_name: str
@@ -363,11 +294,8 @@ class KeyNode(NodeWithBase):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return f"{self.key_name}({self.base.as_jmespath()}, {as_ref(self.key_of(Identity()))})"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Pipe(NodeWithBase):
     right: Node
 
@@ -380,11 +308,8 @@ class Pipe(NodeWithBase):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return f"{self.base.as_jmespath()} {Kword.PIPE} {self.right.as_jmespath()}"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Flatten(NodeWithBase):
     def eval(self) -> Callable[[Any], Any]:
         base_eval = self.base.eval()
@@ -403,11 +328,8 @@ class Flatten(NodeWithBase):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return self.base.as_jmespath() + Kword.FLATTEN
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Not(NodeWithBase):
     def eval(self) -> Callable[[Any], bool]:
         expr_eval = self.base.eval()
@@ -420,11 +342,8 @@ class Not(NodeWithBase):
 
         return _eval
 
-    def as_jmespath(self) -> str:
-        return f"!{self.base.as_jmespath()}"
 
-
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class MapApply(NodeWithBase):
     build: Callable[[Identity], Node]
 
@@ -437,7 +356,3 @@ class MapApply(NodeWithBase):
             return [build_eval(el) for el in arr] if is_list(arr) else None
 
         return _eval
-
-    def as_jmespath(self) -> str:
-        fn = as_ref(self.build(Identity()))
-        return f"map({fn}, {self.base.as_jmespath()})"

@@ -8,10 +8,10 @@ from typing import Any, Concatenate, Self
 from . import _factories as fc
 from . import _nodes as nd
 from . import _strategies as st
-from ._core import IntoExpr, Kword, eq, ne
+from ._core import IntoExpr, eq, ne
 
 
-@dataclass(slots=True, repr=False)
+@dataclass(slots=True)
 class Query:
     node: nd.Node
 
@@ -22,12 +22,6 @@ class Query:
         **kwargs: P.kwargs,
     ) -> Self:
         return self.__class__(factory(self.node, *args, **kwargs))
-
-    def to_jmespath(self) -> str:
-        return self.node.as_jmespath()
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.node.as_jmespath() or Kword.CURRENT})"
 
     def __getattr__(self, name: str) -> Self:
         return self.field(name)
