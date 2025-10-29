@@ -29,7 +29,7 @@ def binary_op(
     sort: type[nd.BinaryOp],
     right: IntoExpr,
     op: Callable[[Any, Any], bool],
-):
+) -> nd.BinaryOp:
     return sort(node, into_expr(right), op)
 
 
@@ -51,6 +51,10 @@ def projection(
     node: nd.Node, rhs: IntoExpr, func: Callable[[Any], list[Any] | None]
 ) -> nd.ProjectionBase:
     return nd.ProjectionBase(node, into_expr(rhs), Kword[func.__name__.upper()], func)
+
+
+def filter_project(base: nd.Node, then: IntoExpr, cond: nd.Node) -> nd.FilterProjection:
+    return nd.FilterProjection(base, into_expr(then), cond)
 
 
 def key(
@@ -76,3 +80,24 @@ def subexpr[**P](
     else:
         parts = (node, factory(*args, **kwargs))
     return nd.SubExpr(parts)
+
+
+def and_op(left: nd.Node, right: IntoExpr) -> nd.And:
+    return nd.And(left, into_expr(right))
+
+
+def or_op(left: nd.Node, right: IntoExpr) -> nd.Or:
+    return nd.Or(left, into_expr(right))
+
+
+def pipe_op(left: nd.Node, right: nd.Node) -> nd.Pipe:
+    return nd.Pipe(left, right)
+
+
+def map_apply(base: nd.Node, build: Callable[[Query], Query]) -> nd.MapApply:
+    from ._main import Query
+
+    def _b(_: nd.Identity) -> nd.Node:
+        return build(Query(nd.Identity())).node
+
+    return nd.MapApply(base, _b)

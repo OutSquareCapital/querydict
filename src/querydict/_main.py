@@ -53,7 +53,7 @@ class Query:
         return self._new(fc.unary, nd.Flatten)
 
     def filter(self, cond: Self, then: IntoExpr) -> Self:
-        return self._new(nd.FilterProjection, fc.into_expr(then), cond.node)
+        return self._new(fc.filter_project, then, cond.node)
 
     def eq(self, other: IntoExpr) -> Self:
         return self._new(fc.binary_op, nd.EqBase, other, eq)
@@ -74,10 +74,10 @@ class Query:
         return self._new(fc.binary_op, nd.Comparator, other, operator.ge)
 
     def and_(self, other: IntoExpr) -> Self:
-        return self._new(nd.And, fc.into_expr(other))
+        return self._new(fc.and_op, other)
 
     def or_(self, other: IntoExpr) -> Self:
-        return self._new(nd.Or, fc.into_expr(other))
+        return self._new(fc.or_op, other)
 
     def not_(self) -> Self:
         return self._new(fc.unary, nd.Not)
@@ -104,10 +104,7 @@ class Query:
         return self._new(fc.callable, st.to_number)
 
     def map_with(self, build: Callable[[Query], Query]) -> Self:
-        def _b(_: nd.Identity) -> nd.Node:
-            return build(identity()).node
-
-        return self._new(nd.MapApply, _b)
+        return self._new(fc.map_apply, build)
 
     def sort_by(self, key: Callable[[Query], Query]) -> Self:
         return self._new(fc.key, "sort_by", st.sort_by, key)
@@ -119,7 +116,7 @@ class Query:
         return self._new(fc.key, "max_by", st.max_by, key)
 
     def pipe(self, rhs: Self) -> Self:
-        return self._new(nd.Pipe, rhs.node)
+        return self._new(fc.pipe_op, rhs.node)
 
     def search(self, data: Any) -> Any:
         eval_func = self.node.eval()
