@@ -2,8 +2,6 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-import cytoolz as cz
-
 from ._core import (
     Node,
     is_comparable,
@@ -23,7 +21,10 @@ def literal(value: Any) -> Node:
 
 
 def identity() -> Node:
-    return cz.functoolz.identity
+    def _eval(value: Any) -> Any:
+        return value
+
+    return _eval
 
 
 def eq(
