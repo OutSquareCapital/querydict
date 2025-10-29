@@ -46,7 +46,7 @@ def is_sized(x: object) -> TypeIs[Sized]:
     return isinstance(x, Sized)
 
 
-def is_number(x: object) -> bool:
+def is_number(x: object) -> TypeIs[int | float]:
     return isinstance(x, (int, float)) and not isinstance(x, bool)
 
 
@@ -58,7 +58,7 @@ def is_list(x: object) -> TypeIs[list[Any]]:
     return isinstance(x, list)
 
 
-def is_comparable(x: object) -> bool:
+def is_comparable(x: object) -> TypeIs[int | float | str]:
     return is_number(x) or isinstance(x, str)
 
 
