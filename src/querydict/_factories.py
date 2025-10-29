@@ -30,33 +30,33 @@ def into_expr(obj: Any) -> Node:
             return LiteralExpr(obj)
 
 
-def new_binary_op(
+def binary_op(
     node: Node, sort: type[BinaryOp], right: Any, op: Callable[[Any, Any], bool]
 ):
     return sort(node, into_expr(right), op)
 
 
-def new_binary(
+def binary(
     node: Node, op: Callable[[Node, Node], BinaryNode], right: Any
 ) -> BinaryNode:
     return op(node, into_expr(right))
 
 
-def new_unary(node: Node, op: Callable[[Node], Node]) -> Node:
+def unary(node: Node, op: Callable[[Node], Node]) -> Node:
     return op(node)
 
 
-def new_callable(node: Node, func: Callable[[Any], Any]) -> CallableNode:
+def callable(node: Node, func: Callable[[Any], Any]) -> CallableNode:
     return CallableNode(node, func)
 
 
-def new_projection(
+def projection(
     node: Node, rhs: Any, func: Callable[[Any], list[Any] | None]
 ) -> ProjectionBase:
     return ProjectionBase(node, into_expr(rhs), Kword[func.__name__.upper()], func)
 
 
-def new_key(
+def key(
     node: Node,
     name: str,
     func: Callable[[list[Any], Any], Any],
@@ -70,7 +70,7 @@ def new_key(
     return KeyNode(node, _b, name, func)
 
 
-def new_subexpr[**P](
+def subexpr[**P](
     node: Node, factory: Callable[P, Node], *args: P.args, **kwargs: P.kwargs
 ) -> SubExpr:
     if isinstance(node, SubExpr):

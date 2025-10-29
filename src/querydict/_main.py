@@ -5,19 +5,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Concatenate, Self
 
-from . import _funcs as fn
+from . import _factories as fc
 from . import _nodes as nd
+from . import _strategies as st
 from ._checks import eq, ne
 from ._core import Comparator, EqBase, Kword
-from ._factories import (
-    into_expr,
-    new_binary_op,
-    new_callable,
-    new_key,
-    new_projection,
-    new_subexpr,
-    new_unary,
-)
 
 
 @dataclass(slots=True, repr=False)
@@ -42,45 +34,45 @@ class Query:
         return self.field(name)
 
     def field(self, name: str) -> Self:
-        return self._new(new_subexpr, nd.Field, name)
+        return self._new(fc.subexpr, nd.Field, name)
 
     def index(self, i: int) -> Self:
-        return self._new(new_subexpr, nd.Index, i)
+        return self._new(fc.subexpr, nd.Index, i)
 
     def slice(
         self, start: int | None = None, end: int | None = None, step: int | None = None
     ) -> Self:
-        return self._new(new_subexpr, nd.Slice, start, end, step)
+        return self._new(fc.subexpr, nd.Slice, start, end, step)
 
     def project(self, rhs: Any) -> Self:
-        return self._new(new_projection, rhs, fn.array_project)
+        return self._new(fc.projection, rhs, st.array_project)
 
     def vproject(self, rhs: Any) -> Self:
-        return self._new(new_projection, rhs, fn.object_project)
+        return self._new(fc.projection, rhs, st.object_project)
 
     def flatten(self) -> Self:
-        return self._new(new_unary, nd.Flatten)
+        return self._new(fc.unary, nd.Flatten)
 
     def filter(self, cond: Self, then: Any) -> Self:
-        return self._new(nd.FilterProjection, into_expr(then), cond.node)
+        return self._new(nd.FilterProjection, fc.into_expr(then), cond.node)
 
     def eq(self, other: Any) -> Self:
-        return self._new(new_binary_op, EqBase, other, eq)
+        return self._new(fc.binary_op, EqBase, other, eq)
 
     def ne(self, other: Any) -> Self:
-        return self._new(new_binary_op, EqBase, other, ne)
+        return self._new(fc.binary_op, EqBase, other, ne)
 
     def lt(self, other: Any) -> Self:
-        return self._new(new_binary_op, Comparator, other, operator.lt)
+        return self._new(fc.binary_op, Comparator, other, operator.lt)
 
     def le(self, other: Any) -> Self:
-        return self._new(new_binary_op, Comparator, other, operator.le)
+        return self._new(fc.binary_op, Comparator, other, operator.le)
 
     def gt(self, other: Any) -> Self:
-        return self._new(new_binary_op, Comparator, other, operator.gt)
+        return self._new(fc.binary_op, Comparator, other, operator.gt)
 
     def ge(self, other: Any) -> Self:
-        return self._new(new_binary_op, Comparator, other, operator.ge)
+        return self._new(fc.binary_op, Comparator, other, operator.ge)
 
     def and_(self, other: Any) -> Self:
         return self._new(nd.And, other)
@@ -89,28 +81,28 @@ class Query:
         return self._new(nd.Or, other)
 
     def not_(self) -> Self:
-        return self._new(new_unary, nd.Not)
+        return self._new(fc.unary, nd.Not)
 
     def length(self) -> Self:
-        return self._new(new_callable, fn.length)
+        return self._new(fc.callable, st.length)
 
     def sort(self) -> Self:
-        return self._new(new_callable, fn.sort)
+        return self._new(fc.callable, st.sort)
 
     def keys(self) -> Self:
-        return self._new(new_callable, fn.keys)
+        return self._new(fc.callable, st.keys)
 
     def values(self) -> Self:
-        return self._new(new_callable, fn.values)
+        return self._new(fc.callable, st.values)
 
     def to_array(self) -> Self:
-        return self._new(new_callable, fn.to_array)
+        return self._new(fc.callable, st.to_array)
 
     def to_string(self) -> Self:
-        return self._new(new_callable, fn.to_string)
+        return self._new(fc.callable, st.to_string)
 
     def to_number(self) -> Self:
-        return self._new(new_callable, fn.to_number)
+        return self._new(fc.callable, st.to_number)
 
     def map_with(self, build: Callable[[Query], Query]) -> Self:
         def _b(_: nd.Identity) -> nd.Node:
@@ -119,13 +111,13 @@ class Query:
         return self._new(nd.MapApply, _b)
 
     def sort_by(self, key: Callable[[Query], Query]) -> Self:
-        return self._new(new_key, "sort_by", fn.sort_by, key)
+        return self._new(fc.key, "sort_by", st.sort_by, key)
 
     def min_by(self, key: Callable[[Query], Query]) -> Self:
-        return self._new(new_key, "min_by", fn.min_by, key)
+        return self._new(fc.key, "min_by", st.min_by, key)
 
     def max_by(self, key: Callable[[Query], Query]) -> Self:
-        return self._new(new_key, "max_by", fn.max_by, key)
+        return self._new(fc.key, "max_by", st.max_by, key)
 
     def pipe(self, rhs: Self) -> Self:
         return self._new(nd.Pipe, rhs.node)
