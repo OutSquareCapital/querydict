@@ -5,6 +5,7 @@ from typing import Any
 from ._core import (
     Node,
     is_comparable,
+    is_empty,
     is_list,
     is_mapping,
     is_number,
@@ -39,9 +40,7 @@ def eq(
 def not_(expr_eval: Node) -> Callable[[Any], bool]:
     def _eval(value: Any) -> bool:
         v = expr_eval(value)
-        if is_number(v) and v == 0:
-            return True
-        return not not_empty(v)
+        return True if is_number(v) and v == 0 or is_empty(v) else False
 
     return _eval
 
